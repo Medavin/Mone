@@ -1,5 +1,8 @@
+import Link from "next/link";
+
 import { createClient } from "@/lib/supabase/server";
 import type { Tables } from "@/lib/supabase/database.types";
+import { formatDate } from "@/lib/format";
 
 import { signOut } from "./actions";
 
@@ -9,18 +12,6 @@ type Clinic = Pick<
   Tables<"clinics">,
   "id" | "name" | "code" | "status" | "go_live_date"
 >;
-
-/** Fixed locale so the server-rendered date doesn't drift by deploy region. */
-function formatDate(value: string | null) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
 
 export default async function ClinicsPage() {
   const supabase = createClient();
@@ -76,7 +67,9 @@ export default async function ClinicsPage() {
             <tbody>
               {clinics.map((clinic) => (
                 <tr key={clinic.id}>
-                  <td>{clinic.name}</td>
+                  <td>
+                    <Link href={`/clinics/${clinic.id}`}>{clinic.name}</Link>
+                  </td>
                   <td className="muted">{clinic.code ?? "—"}</td>
                   <td>
                     <span className={`pill pill--${clinic.status}`}>

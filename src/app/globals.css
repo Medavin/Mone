@@ -170,6 +170,81 @@ tbody tr:last-child td {
  * `status` is free text, so the base pill is the fallback for any value we
  * haven't styled explicitly. Add modifiers as the vocabulary settles.
  */
+h2 {
+  font-size: 1.05rem;
+  margin: 2rem 0 0.75rem;
+}
+
+.as-of,
+.footnote {
+  font-size: 0.82rem;
+  font-weight: 400;
+}
+
+.footnote {
+  margin-top: 0.6rem;
+}
+
+.notes {
+  color: var(--muted);
+  border-left: 2px solid var(--border);
+  padding-left: 0.8rem;
+  margin: 0;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.back {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+/* AR buckets: the total leads, the ageing buckets follow. */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+}
+
+.stat--lead {
+  border-color: var(--accent);
+}
+
+.stat-label {
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stat-value {
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+td.num,
+th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .pill {
   display: inline-block;
   padding: 0.1rem 0.5rem;
