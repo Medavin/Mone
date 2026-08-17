@@ -44,7 +44,11 @@ function cellValue(row, n) {
 
 const num = (v) => {
   if (v === null || v === undefined || v === "") return null;
+  // Number(date) is epoch milliseconds — a silent ~1.6e12 per cell if a date
+  // column is ever read as a figure. Dates are never quantities here.
+  if (v instanceof Date) return null;
   const n = typeof v === "object" && "result" in v ? v.result : v;
+  if (n instanceof Date) return null;
   const parsed = Number(n);
   return Number.isFinite(parsed) ? parsed : null;
 };
@@ -272,6 +276,196 @@ function parseCarrierAr(sheet) {
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
+/**
+ * "Service Details" -> service_monthly. Nests financial class > "Non-voided
+ * items" > procedure lines, with a stated total per class to check against.
+ */
+function parseServiceDetails(sheet) {
+  let financialClass = null;
+  const rows = [];
+  const stated = new Map();
+  const parsed = new Map();
+
+  for (let r = 1; r <= sheet.rowCount; r++) {
+    const row = sheet.getRow(r);
+    const c1 = text(cellValue(row, 1));
+    const units = num(cellValue(row, 3));
+    const charge = num(cellValue(row, 4));
+    if (!c1) continue;
+
+    // "1A - AUTO Total:" closes a class; "Non-voided items Total:" is an
+    // inner subtotal we ignore, since its lines are already counted.
+    const totalMatch = /^(.*?)\s*Total:?\s*$/i.exec(c1);
+    if (totalMatch) {
+      const label = totalMatch[1].trim();
+      if (/non-voided/i.test(label)) continue;
+      stated.set(label.split(" - ")[0].trim(), charge ?? 0);
+      continue;
+    }
+
+    // A class heading carries no figures of its own.
+    if (/^\w{1,3} - /.test(c1) && units === null) {
+      financialClass = c1.split(" - ")[0].trim();
+      continue;
+    }
+
+    if (/^non-voided/i.test(c1) || c1 === "Proc") continue;
+
+    // Procedure line: code, description, units, charge.
+    if (units !== null || charge !== null) {
+      rows.push({
+        financial_class_code: financialClass,
+        procedure_code: c1,
+        description: text(cellValue(row, 2)),
+        units,
+        charges: charge,
+      });
+      if (financialClass) {
+        parsed.set(financialClass, (parsed.get(financialClass) ?? 0) + (charge ?? 0));
+      }
+    }
+  }
+
+  let checked = 0;
+  let mismatched = 0;
+  for (const [code, total] of stated) {
+    if (!parsed.has(code)) continue;
+    checked++;
+    if (Math.abs(round2(total - parsed.get(code))) >= 0.01) mismatched++;
+  }
+  return { rows, checks: { checked, mismatched } };
+}
+
+/** Excel serial dates and real dates both appear in these headers. */
+function headerMonth(value) {
+  if (value instanceof Date) {
+    return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, "0")}-01`;
+  }
+  const parsed = typeof value === "string" ? new Date(value) : null;
+  if (parsed && !Number.isNaN(parsed.getTime())) {
+    return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-01`;
+  }
+  return null;
+}
+
+/**
+ * "Visits & New Patients" is wide — financial class down, months across, with
+ * a block per metric. Unpivots to one row per class per month per metric.
+ */
+function parseVisitsAndNewPatients(sheet) {
+  let metric = null;
+  let months = null;
+  const rows = [];
+
+  for (let r = 1; r <= sheet.rowCount; r++) {
+    const row = sheet.getRow(r);
+    const c1 = text(cellValue(row, 1));
+    if (!c1) continue;
+
+    // Header row for a block: months run across from column 3.
+    if (/^financial class/i.test(c1)) {
+      months = [];
+      for (let c = 3; c <= sheet.columnCount; c++) {
+        months.push({ col: c, month: headerMonth(cellValue(row, c)) });
+      }
+      months = months.filter((m) => m.month);
+      continue;
+    }
+
+    // A bare title line switches which metric the next block holds.
+    if (num(cellValue(row, 3)) === null && !text(cellValue(row, 2))) {
+      if (/new patient/i.test(c1)) metric = "new_patients";
+      else if (/visit/i.test(c1)) metric = "visits";
+      continue;
+    }
+
+    if (!metric || !months || /total/i.test(c1)) continue;
+
+    for (const { col, month } of months) {
+      const value = num(cellValue(row, col));
+      if (value === null) continue;
+      rows.push({
+        metric,
+        financial_class_code: c1,
+        financial_class_name: text(cellValue(row, 2)),
+        period_month: month,
+        value,
+      });
+    }
+  }
+  return { rows };
+}
+
+/**
+ * "ReferringProviderInbound" -> referring_providers + referrals_monthly.
+ *
+ * Column positions are NOT stable between exports — Street sits in column 5 in
+ * one month's file and column 3 in another, because the layout merges a
+ * different number of cells. Reading by fixed index silently yields nulls and
+ * zeroes, so resolve every column from the header text instead.
+ *
+ * MTD/YTD appear twice, once under "New Patients" and once under "Visits";
+ * the group label sits on the row above, spanning its pair.
+ */
+function parseReferringProviders(sheet) {
+  const header = findHeaderRow(sheet, "Referring Provider Name", 10);
+  if (!header) return { rows: [], error: "no header row" };
+
+  const headerRow = sheet.getRow(header);
+  const groupRow = sheet.getRow(header - 1);
+  const col = {};
+  const periodCols = [];
+
+  for (let c = 1; c <= sheet.columnCount; c++) {
+    const label = text(cellValue(headerRow, c))?.toLowerCase();
+    if (!label) continue;
+    if (label.includes("referring provider name")) col.name = c;
+    else if (label === "street") col.street = c;
+    else if (label === "city") col.city = c;
+    else if (label === "st" || label === "state") col.state = c;
+    else if (label === "zip") col.zip = c;
+    else if (label.includes("phone")) col.phone = c;
+    else if (label.includes("email")) col.email = c;
+    else if (label === "mtd" || label === "ytd") periodCols.push({ c, label });
+  }
+
+  // Walk left from each MTD/YTD column to find the group heading above it.
+  let group = null;
+  for (const entry of periodCols) {
+    for (let c = entry.c; c >= 1; c--) {
+      const heading = text(cellValue(groupRow, c))?.toLowerCase();
+      if (heading) {
+        group = heading.includes("new patient") ? "new_patients" : "visits";
+        break;
+      }
+    }
+    col[`${group ?? "visits"}_${entry.label}`] = entry.c;
+  }
+
+  const at = (row, key) => (col[key] ? cellValue(row, col[key]) : null);
+
+  const rows = [];
+  for (let r = header + 1; r <= sheet.rowCount; r++) {
+    const row = sheet.getRow(r);
+    const name = text(at(row, "name"));
+    if (!name || /total/i.test(name)) continue;
+    rows.push({
+      name,
+      street: text(at(row, "street")),
+      city: text(at(row, "city")),
+      state: text(at(row, "state")),
+      zip: text(at(row, "zip")),
+      phone: text(at(row, "phone")),
+      email: text(at(row, "email")),
+      new_patients_mtd: num(at(row, "new_patients_mtd")),
+      new_patients_ytd: num(at(row, "new_patients_ytd")),
+      visits_mtd: num(at(row, "visits_mtd")),
+      visits_ytd: num(at(row, "visits_ytd")),
+    });
+  }
+  return { rows, columns: col };
+}
+
 async function main() {
   const file = process.argv[2];
   const asJson = process.argv.includes("--json");
@@ -288,6 +482,9 @@ async function main() {
   const ar = get("Financial Class A-R");
   const activity = get("Financial Activity");
   const carrier = get("Carrier AR");
+  const services = get("Service Details");
+  const visits = get("Visits & New Patients");
+  const referrals = get("ReferringProviderInbound");
 
   const result = {
     source_file: path.basename(file),
@@ -298,7 +495,18 @@ async function main() {
     activity_monthly: activity
       ? parseFinancialActivity(activity)
       : { rows: [], error: "sheet missing" },
-    carrier_ar: carrier ? parseCarrierAr(carrier) : { accounts: [], error: "sheet missing" },
+    carrier_ar: carrier
+      ? parseCarrierAr(carrier)
+      : { claims: [], cptLines: 0, checks: {}, error: "sheet missing" },
+    service_monthly: services
+      ? parseServiceDetails(services)
+      : { rows: [], error: "sheet missing" },
+    visits_new_patients: visits
+      ? parseVisitsAndNewPatients(visits)
+      : { rows: [], error: "sheet missing" },
+    referrals_monthly: referrals
+      ? parseReferringProviders(referrals)
+      : { rows: [], error: "sheet missing" },
   };
 
   if (asJson) {
@@ -356,6 +564,40 @@ async function main() {
       (clean ? "  ✓" : `  drift ${money(checks.drift)}`),
   );
 
+  const svc = result.service_monthly;
+  console.log(`\nservice_monthly  : ${svc.rows.length} procedure lines`);
+  console.log(
+    `  charges        : ${money(svc.rows.reduce((s, r) => s + (r.charges ?? 0), 0))}`,
+  );
+  console.log(
+    `  reconciliation : ${svc.checks?.checked ?? 0} class totals, ` +
+      `${svc.checks?.mismatched ?? 0} mismatched` +
+      (svc.checks && !svc.checks.mismatched ? "  \u2713" : ""),
+  );
+
+  const vnp = result.visits_new_patients.rows;
+  const vMonths = new Set(vnp.map((r) => r.period_month));
+  console.log(`\nvisits/new pts   : ${vnp.length} class-months`);
+  console.log(
+    `  visits         : ${formatCount(vnp.filter((r) => r.metric === "visits"))}`,
+  );
+  console.log(
+    `  new patients   : ${formatCount(vnp.filter((r) => r.metric === "new_patients"))}`,
+  );
+  console.log(`  months covered : ${vMonths.size}`);
+
+  const ref = result.referrals_monthly.rows;
+  console.log(`\nreferrals        : ${ref.length} referring providers`);
+  console.log(
+    `  new patients MTD: ${ref.reduce((s, r) => s + (r.new_patients_mtd ?? 0), 0).toLocaleString("en-US")}`,
+  );
+  console.log(
+    `  visits MTD      : ${ref.reduce((s, r) => s + (r.visits_mtd ?? 0), 0).toLocaleString("en-US")}`,
+  );
+  console.log(
+    `  with contact    : ${ref.filter((r) => r.phone || r.email).length}`,
+  );
+
   // This one is NOT expected to match: the carrier report covers balances
   // assigned to a carrier, while the AR summary covers everything.
   console.log(
@@ -364,6 +606,9 @@ async function main() {
   );
   console.log();
 }
+
+const formatCount = (rows) =>
+  rows.reduce((s, r) => s + (r.value ?? 0), 0).toLocaleString("en-US");
 
 main().catch((error) => {
   console.error(error.message);
