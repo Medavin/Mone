@@ -8,7 +8,6 @@ import {
   statusSlug,
 } from "@/lib/format";
 
-import { signOut } from "./actions";
 import { Delta } from "./delta";
 
 export const metadata = { title: "Clinics · MOne" };
@@ -42,9 +41,6 @@ function emptyMetrics(): Metrics {
 
 export default async function ClinicsPage() {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
   const [clinicsResult, arResult, activityResult, camResult] =
     await Promise.all([
@@ -155,13 +151,8 @@ export default async function ClinicsPage() {
       <header className="page-header">
         <div>
           <h1>Clinic dashboard</h1>
-          <p className="muted">{user?.email ?? ""}</p>
+          <p className="muted">{clinics.length} clinics</p>
         </div>
-        <form action={signOut}>
-          <button type="submit" className="secondary">
-            Sign out
-          </button>
-        </form>
       </header>
 
       {error ? (

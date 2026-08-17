@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-import type { Database } from "./database.types";
+import type { AppDatabase } from "./pending.types";
 import { supabaseEnv } from "./env";
 
 /** Routes reachable without a session. Everything else requires a login. */
@@ -15,7 +15,7 @@ export async function updateSession(request: NextRequest) {
   const { url, anonKey } = supabaseEnv();
   let response = NextResponse.next({ request });
 
-  const supabase = createServerClient<Database>(url, anonKey, {
+  const supabase = createServerClient<AppDatabase>(url, anonKey, {
     cookies: {
       getAll() {
         return request.cookies.getAll();
