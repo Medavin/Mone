@@ -9,6 +9,7 @@ const NAV = [
   { href: "/crl", label: "CRL" },
   { href: "/tasks", label: "Tasks" },
   { href: "/projects", label: "Projects" },
+  { href: "/reports", label: "Reports" },
 ];
 
 /** Chrome shared by every signed-in page. */

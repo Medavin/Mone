@@ -602,3 +602,35 @@ th.num {
     border-color: #274363;
   }
 }
+
+/* Parse checks ---------------------------------------------------------- */
+
+.checks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 1.25rem 0;
+  font-size: 0.85rem;
+}
+
+.check.ok {
+  color: #0a6634;
+}
+
+.check.bad {
+  color: var(--danger);
+}
+
+@media (prefers-color-scheme: dark) {
+  .check.ok {
+    color: #7fd8a0;
+  }
+}
+
+h2.tight {
+  margin-top: 0;
+}
+
+input[type="file"] {
+  padding: 0.45rem;
+}
