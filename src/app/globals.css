@@ -288,9 +288,8 @@ th.num {
   white-space: nowrap;
 }
 
-/* Enabled — running normally. */
-.pill--enable,
-.pill--enabled,
+/* Active — running normally. ("Enable" means the same thing; Active is the
+   value we standardised on.) */
 .pill--active {
   color: #0a6634;
   background: #e4f5ea;
@@ -322,8 +321,6 @@ th.num {
 }
 
 @media (prefers-color-scheme: dark) {
-  .pill--enable,
-  .pill--enabled,
   .pill--active {
     color: #7fd8a0;
     background: #10291b;
