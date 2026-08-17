@@ -634,3 +634,31 @@ h2.tight {
 input[type="file"] {
   padding: 0.45rem;
 }
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.checkbox input {
+  width: auto;
+}
+
+.pill--running {
+  color: #1a4f8a;
+  background: #e5eefa;
+  border-color: #b9d1ee;
+}
+
+.pill--succeeded {
+  color: #0a6634;
+  background: #e4f5ea;
+  border-color: #b7e2c6;
+}
+
+.pill--failed {
+  color: var(--danger);
+  background: var(--bg);
+}

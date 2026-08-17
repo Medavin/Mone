@@ -5,19 +5,33 @@ import { useState } from "react";
 import { formatCurrency, formatMonth, formatNumber } from "@/lib/format";
 import type { ParsedReport } from "@/lib/report/parse.mjs";
 
-import { parseUploadedReport } from "./actions";
+import { loadUploadedReport, parseUploadedReport } from "./actions";
+import { suggestClinic } from "@/lib/report/load";
+
+type Clinic = { id: number; name: string };
 
 const sum = <T,>(rows: T[], pick: (row: T) => number | null | undefined) =>
   rows.reduce((total, row) => total + (pick(row) ?? 0), 0);
 
-export function ReportView() {
+export function ReportView({ clinics }: { clinics: Clinic[] }) {
   const [report, setReport] = useState<ParsedReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [loadResult, setLoadResult] = useState<{
+    ok: boolean;
+    message: string;
+    written?: { table: string; rows: number }[];
+    skipped?: string[];
+  } | null>(null);
+  const [file, setFile] = useState<File | null>(null);
 
   async function onSubmit(formData: FormData) {
     setPending(true);
     setError(null);
+    setLoadResult(null);
+    const upload = formData.get("report");
+    setFile(upload instanceof File ? upload : null);
     const result = await parseUploadedReport(formData);
     setPending(false);
     if (!result.ok) {
@@ -26,6 +40,15 @@ export function ReportView() {
       return;
     }
     setReport(result.report);
+  }
+
+  async function onLoad(formData: FormData) {
+    if (file) formData.set("report", file);
+    setLoading(true);
+    setLoadResult(null);
+    const result = await loadUploadedReport(formData);
+    setLoading(false);
+    setLoadResult(result);
   }
 
   return (
@@ -52,8 +75,100 @@ export function ReportView() {
         </p>
       ) : null}
 
-      {report ? <Parsed report={report} /> : null}
+      {report ? (
+        <>
+          <LoadPanel
+            report={report}
+            clinics={clinics}
+            onLoad={onLoad}
+            loading={loading}
+            result={loadResult}
+          />
+          <Parsed report={report} />
+        </>
+      ) : null}
     </>
+  );
+}
+
+function LoadPanel({
+  report,
+  clinics,
+  onLoad,
+  loading,
+  result,
+}: {
+  report: ParsedReport;
+  clinics: Clinic[];
+  onLoad: (formData: FormData) => Promise<void>;
+  loading: boolean;
+  result: {
+    ok: boolean;
+    message: string;
+    written?: { table: string; rows: number }[];
+    skipped?: string[];
+  } | null;
+}) {
+  // Report names are longer than the ones on file, so suggest rather than
+  // assume — a wrong clinic here writes a month of AR to the wrong practice.
+  const suggestion = suggestClinic(report.clinic_name, clinics);
+
+  return (
+    <form action={onLoad} className="card stack inline-form">
+      <input type="hidden" name="period_month" value={report.period_month ?? ""} />
+      <div className="form-row">
+        <label className="field">
+          <span>Load into clinic</span>
+          <select name="clinic_id" required defaultValue={suggestion?.id ?? ""}>
+            <option value="" disabled>
+              Choose…
+            </option>
+            {clinics.map((clinic) => (
+              <option key={clinic.id} value={clinic.id}>
+                {clinic.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Period</span>
+          <input value={report.period_month ?? "unknown"} readOnly />
+        </label>
+      </div>
+
+      <label className="checkbox">
+        <input type="checkbox" name="replace" />
+        <span>Replace existing rows for this clinic and month</span>
+      </label>
+
+      <div className="form-actions">
+        <button type="submit" disabled={loading || !report.period_month}>
+          {loading ? "Loading…" : "Load into database"}
+        </button>
+      </div>
+
+      <p className="muted footnote">
+        Matched &ldquo;{report.clinic_name}&rdquo; to{" "}
+        {suggestion ? `${suggestion.name}` : "nothing — pick one"}. Writes
+        ar_monthly and activity_monthly under an import_batches row.
+      </p>
+
+      {result ? (
+        <div className={result.ok ? "check ok" : "check bad"}>
+          {result.ok ? "✓" : "✗"} {result.message}
+          {result.written?.length ? (
+            <span className="muted sub">
+              {result.written.map((w) => `${w.table}: ${w.rows}`).join(" · ")}
+            </span>
+          ) : null}
+          {result.skipped?.map((note) => (
+            <span className="muted sub" key={note}>
+              {note}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </form>
   );
 }
 
