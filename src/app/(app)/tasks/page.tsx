@@ -4,6 +4,7 @@ import type { WorkStatus } from "@/lib/supabase/pending.types";
 
 import { setTaskStatus } from "./actions";
 import { NewTaskForm } from "./new-task-form";
+import { SchemaNotice } from "../schema-notice";
 
 export const metadata = { title: "Tasks · MOne" };
 
@@ -88,13 +89,10 @@ export default async function TasksPage({
       </nav>
 
       {error ? (
-        <p className="error" role="alert">
-          Could not load tasks: {error.message}
-          {error.message.includes("does not exist")
-            ? " — the schema migration hasn't been pushed yet."
-            : ""}
-        </p>
-      ) : rows.length === 0 ? (
+        <SchemaNotice feature="tasks" tables={["tasks"]} message={error.message} />
+      ) : null}
+
+      {error ? null : rows.length === 0 ? (
         <p className="muted">
           {view === "in"
             ? "Nothing assigned to you."

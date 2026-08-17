@@ -662,3 +662,26 @@ input[type="file"] {
   color: var(--danger);
   background: var(--bg);
 }
+
+/* Shown when a feature's tables aren't created yet. */
+.notice {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 1.5rem;
+}
+
+.notice p {
+  margin: 0.4rem 0 0;
+  font-size: 0.9rem;
+}
+
+.notice code {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.05rem 0.3rem;
+  font-size: 0.85em;
+}

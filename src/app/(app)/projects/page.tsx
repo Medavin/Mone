@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
 
 import { NewProjectForm } from "./new-project-form";
+import { SchemaNotice } from "../schema-notice";
 
 export const metadata = { title: "Projects · MOne" };
 
@@ -72,13 +73,14 @@ export default async function ProjectsPage() {
       </header>
 
       {error ? (
-        <p className="error" role="alert">
-          Could not load projects: {error.message}
-          {error.message.includes("does not exist")
-            ? " — the schema migration hasn't been pushed yet."
-            : ""}
-        </p>
-      ) : rows.length === 0 ? (
+        <SchemaNotice
+          feature="projects"
+          tables={["projects", "project_updates", "project_assignments"]}
+          message={error.message}
+        />
+      ) : null}
+
+      {error ? null : rows.length === 0 ? (
         <p className="muted">No projects yet.</p>
       ) : (
         <>

@@ -4,6 +4,7 @@ import type { CrlStatus } from "@/lib/supabase/pending.types";
 
 import { setCrlStatus } from "./actions";
 import { NewEntryForm } from "./new-entry-form";
+import { SchemaNotice } from "../schema-notice";
 
 export const metadata = { title: "CRL · MOne" };
 
@@ -85,13 +86,14 @@ export default async function CrlPage({
       </nav>
 
       {error ? (
-        <p className="error" role="alert">
-          Could not load requests: {error.message}
-          {error.message.includes("does not exist")
-            ? " — the schema migration hasn't been pushed yet."
-            : ""}
-        </p>
-      ) : rows.length === 0 ? (
+        <SchemaNotice
+          feature="client request log"
+          tables={["crl_entries"]}
+          message={error.message}
+        />
+      ) : null}
+
+      {error ? null : rows.length === 0 ? (
         <p className="muted">
           Nothing here. Requests you raise against a clinic&rsquo;s AR will
           appear in this list.
