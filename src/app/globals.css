@@ -53,6 +53,39 @@ h1 {
   max-width: 380px;
 }
 
+.page--wide {
+  max-width: 1400px;
+}
+
+.code {
+  font-size: 0.8rem;
+}
+
+/* Month-over-month change, shown under the value it belongs to. */
+.delta {
+  display: block;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.delta--up {
+  color: #0a6634;
+}
+
+.delta--down {
+  color: var(--danger);
+}
+
+.delta--flat {
+  color: var(--muted);
+}
+
+@media (prefers-color-scheme: dark) {
+  .delta--up {
+    color: #7fd8a0;
+  }
+}
+
 .page-header {
   display: flex;
   align-items: flex-start;
