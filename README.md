@@ -1,54 +1,34 @@
 # MOne
 
-Next.js 14 (app router, TypeScript) front end for the MOne Supabase backend.
+AR platform for Momentum. Next.js 14 + Supabase.
+
+**Read `CLAUDE.md` first** — it holds the project's standing decisions and the reasons
+behind them. `docs/Momentum_App_Structure_Spec.md` is the full specification.
 
 ## Setup
 
 ```bash
 npm install
-cp .env.local.example .env.local   # then fill in your Supabase URL and anon key
+cp .env.local.example .env.local     # then paste your own values in
 npm run dev
 ```
 
-The app runs at http://localhost:3000.
+Both values come from the Supabase dashboard, Project Settings -> API.
+`.env.local` is git-ignored and must never be committed.
 
-## What's here
+## Database
 
-| Path | Purpose |
-| --- | --- |
-| `src/middleware.ts` | Refreshes the Supabase session on every request and redirects signed-out users to `/login` |
-| `src/lib/supabase/client.ts` | Supabase client for client components |
-| `src/lib/supabase/server.ts` | Supabase client for server components, route handlers and server actions |
-| `src/lib/supabase/middleware.ts` | Session refresh + route protection used by the middleware |
-| `src/lib/supabase/database.types.ts` | Generated schema types — do not edit by hand |
-| `src/app/login` | Email/password sign-in |
-| `src/app/auth/callback` | Exchanges the `code` from email links (recovery, confirmation, OAuth) for a session |
-| `src/app/clinics` | Lists rows from the `clinics` table |
+Migrations are in `supabase/migrations/`, run in order in the Supabase SQL Editor.
+001-004 are applied. **Run `supabase/VERIFY.sql` after every migration** — the SQL
+Editor reporting success does not prove the objects were created.
 
-## Auth and data access
+## What exists
 
-Auth uses Supabase's cookie-based SSR flow (`@supabase/ssr`), so server components
-read the signed-in user directly and queries run under that user's row-level
-security policies. Only the anon key is used — there is no service-role key in
-this app, and none should be added to `NEXT_PUBLIC_*` variables.
+- Login against Supabase Auth, with session refresh in `middleware.ts`
+- Route protection: anything outside `/login` redirects when signed out
+- `/clinics` — lists clinics, filtered by the database's own policies
 
-Every route except `/login` and `/auth/*` requires a session; adjust
-`PUBLIC_ROUTES` in `src/lib/supabase/middleware.ts` to change that.
+## Data rules
 
-## Database types
-
-Both Supabase clients are typed against `src/lib/supabase/database.types.ts`, so
-table and column names are checked at compile time. Regenerate it after any
-schema change:
-
-```bash
-npx supabase gen types typescript --project-id azrszucuueqxhvkzyhfm > src/lib/supabase/database.types.ts
-```
-
-That needs `npx supabase login` once per machine.
-
-## Redirect URLs
-
-For the `/auth/callback` route to work outside local development, add the
-deployed origin under **Authentication → URL Configuration → Redirect URLs** in
-the Supabase dashboard. `http://localhost:3000/**` is allowed by default.
+- **No real patient data** until the project is transferred to Momentum's accounts.
+- Access is enforced in the database, never in the interface.
