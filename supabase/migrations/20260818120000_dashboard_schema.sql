@@ -217,7 +217,83 @@ create table if not exists public.task_files (
 
 
 -- ---------------------------------------------------------------------------
--- 7. Row-level security
+-- 7. Projects
+--
+-- Like tasks but longer-lived and measured: a scope of claims worth an amount,
+-- with a turnaround target. `projects.assigned_to` is the current owner;
+-- project_assignments keeps the reassignment trail with the comment explaining
+-- each handover, and project_updates is the progress history.
+-- ---------------------------------------------------------------------------
+
+create table if not exists public.projects (
+  id            bigint generated always as identity primary key,
+  clinic_id     bigint references public.clinics (id) on delete cascade,
+  name          text   not null,
+  detail        text,
+  amount        numeric(14,2),   -- dollar value of the claims in scope
+  claim_count   integer,         -- number of claims in scope
+  tat_days      integer,         -- target turnaround, in days
+  assigned_to   uuid   not null references public.profiles (id),
+  assigned_by   uuid   not null references public.profiles (id),
+  status        text   not null default 'open'
+                  check (status in
+                    ('open','in_progress','blocked','done','cancelled')),
+  progress_pct  smallint not null default 0
+                  check (progress_pct between 0 and 100),
+  started_on    date,
+  due_on        date,
+  completed_at  timestamptz,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+
+create index if not exists projects_assigned_to_idx
+  on public.projects (assigned_to, status, due_on);
+create index if not exists projects_clinic_idx
+  on public.projects (clinic_id, status);
+
+-- Every handover, oldest first, so "who had this and why did it move" is
+-- answerable. The current owner is denormalised onto projects.assigned_to.
+create table if not exists public.project_assignments (
+  id           bigint generated always as identity primary key,
+  project_id   bigint not null references public.projects (id) on delete cascade,
+  assigned_to  uuid   not null references public.profiles (id),
+  assigned_by  uuid   not null references public.profiles (id),
+  assigned_at  timestamptz not null default now(),
+  comment      text
+);
+
+create index if not exists project_assignments_project_idx
+  on public.project_assignments (project_id, assigned_at);
+
+-- Progress history: each entry may move the percentage, carry a comment, or both.
+create table if not exists public.project_updates (
+  id            bigint generated always as identity primary key,
+  project_id    bigint not null references public.projects (id) on delete cascade,
+  author_id     uuid   not null references public.profiles (id),
+  progress_pct  smallint check (progress_pct between 0 and 100),
+  comment       text   not null,
+  created_at    timestamptz not null default now()
+);
+
+create index if not exists project_updates_project_idx
+  on public.project_updates (project_id, created_at desc);
+
+create table if not exists public.project_accounts (
+  project_id  bigint not null references public.projects (id) on delete cascade,
+  account_id  bigint not null references public.accounts (id) on delete cascade,
+  primary key (project_id, account_id)
+);
+
+create table if not exists public.project_files (
+  project_id  bigint not null references public.projects (id) on delete cascade,
+  file_id     bigint not null references public.files (id) on delete cascade,
+  primary key (project_id, file_id)
+);
+
+
+-- ---------------------------------------------------------------------------
+-- 8. Row-level security
 --
 -- Mirrors the existing model: visibility flows through can_see_clinic(), so
 -- CAMs keep seeing only their assigned clinics. Reads are open to anyone who
@@ -316,9 +392,76 @@ create policy task_files_all on public.task_files
     exists (select 1 from public.tasks t where t.id = task_id)
   );
 
+-- Projects follow the same rules as tasks: visible to the people involved or
+-- to anyone who can see the clinic; anyone may assign to anyone.
+alter table public.projects            enable row level security;
+alter table public.project_assignments enable row level security;
+alter table public.project_updates     enable row level security;
+alter table public.project_accounts    enable row level security;
+alter table public.project_files       enable row level security;
+
+create policy projects_select on public.projects
+  for select to authenticated using (
+    assigned_to = (select auth.uid())
+    or assigned_by = (select auth.uid())
+    or clinic_id is null
+    or public.can_see_clinic(clinic_id)
+  );
+create policy projects_insert on public.projects
+  for insert to authenticated
+  with check (assigned_by = (select auth.uid()));
+create policy projects_update on public.projects
+  for update to authenticated using (
+    assigned_to = (select auth.uid())
+    or assigned_by = (select auth.uid())
+    or public.is_admin()
+  );
+create policy projects_delete on public.projects
+  for delete to authenticated using (
+    assigned_by = (select auth.uid()) or public.is_admin()
+  );
+
+-- History is append-only: no update or delete policy, so a handover or a
+-- progress note cannot be rewritten after the fact.
+create policy project_assignments_select on public.project_assignments
+  for select to authenticated using (
+    exists (select 1 from public.projects p where p.id = project_id)
+  );
+create policy project_assignments_insert on public.project_assignments
+  for insert to authenticated
+  with check (
+    assigned_by = (select auth.uid())
+    and exists (select 1 from public.projects p where p.id = project_id)
+  );
+
+create policy project_updates_select on public.project_updates
+  for select to authenticated using (
+    exists (select 1 from public.projects p where p.id = project_id)
+  );
+create policy project_updates_insert on public.project_updates
+  for insert to authenticated
+  with check (
+    author_id = (select auth.uid())
+    and exists (select 1 from public.projects p where p.id = project_id)
+  );
+
+create policy project_accounts_all on public.project_accounts
+  for all to authenticated using (
+    exists (select 1 from public.projects p where p.id = project_id)
+  ) with check (
+    exists (select 1 from public.projects p where p.id = project_id)
+  );
+
+create policy project_files_all on public.project_files
+  for all to authenticated using (
+    exists (select 1 from public.projects p where p.id = project_id)
+  ) with check (
+    exists (select 1 from public.projects p where p.id = project_id)
+  );
+
 
 -- ---------------------------------------------------------------------------
--- 8. Dashboard rollup
+-- 9. Dashboard rollup
 --
 -- The dashboard needs counts and amounts per clinic per month. Doing it in a
 -- view keeps the aggregation in one place.
@@ -340,5 +483,32 @@ from public.accounts a
 left join public.account_routing r
   on r.account_id = a.id and r.returned_at is null
 group by a.clinic_id, a.as_of_month;
+
+-- Target vs actual turnaround, so TAT can be reported without repeating the
+-- date arithmetic at every call site.
+create or replace view public.project_tat as
+select
+  p.id            as project_id,
+  p.clinic_id,
+  p.name,
+  p.status,
+  p.progress_pct,
+  p.amount,
+  p.claim_count,
+  p.assigned_to,
+  p.tat_days      as target_tat_days,
+  case
+    when p.started_on is null then null
+    when p.completed_at is not null then (p.completed_at::date - p.started_on)
+    else (current_date - p.started_on)
+  end             as elapsed_days,
+  p.completed_at is not null as is_complete,
+  case
+    when p.tat_days is null or p.started_on is null then null
+    when p.completed_at is not null
+      then (p.completed_at::date - p.started_on) > p.tat_days
+    else (current_date - p.started_on) > p.tat_days
+  end             as is_overdue
+from public.projects p;
 
 commit;
