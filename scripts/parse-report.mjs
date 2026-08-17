@@ -28,6 +28,20 @@ function parseFileName(file) {
   };
 }
 
+/**
+ * exceljs reports a merged range's value on every cell in it, while the
+ * exports merge cells liberally for layout. Reading a merged slave as if it
+ * held its own value duplicates figures into neighbouring columns, so treat
+ * anything but the master cell as empty.
+ */
+function cellValue(row, n) {
+  const cell = row.getCell(n);
+  if (cell.isMerged && cell.master && cell.master.address !== cell.address) {
+    return null;
+  }
+  return cell.value;
+}
+
 const num = (v) => {
   if (v === null || v === undefined || v === "") return null;
   const n = typeof v === "object" && "result" in v ? v.result : v;
@@ -47,7 +61,7 @@ const text = (v) => {
 /** Find the row holding the column headers, so a shifted export still parses. */
 function findHeaderRow(sheet, firstCell, limit = 12) {
   for (let r = 1; r <= limit; r++) {
-    if (text(sheet.getRow(r).getCell(1).value)?.toLowerCase() ===
+    if (text(cellValue(sheet.getRow(r), 1))?.toLowerCase() ===
         firstCell.toLowerCase()) {
       return r;
     }
@@ -63,17 +77,17 @@ function parseFinancialClassAr(sheet) {
   const rows = [];
   for (let r = header + 1; r <= sheet.rowCount; r++) {
     const row = sheet.getRow(r);
-    const code = text(row.getCell(1).value);
+    const code = text(cellValue(row, 1));
     if (!code || /grand total/i.test(code)) continue;
     rows.push({
       financial_class_code: code,
-      financial_class_name: text(row.getCell(2).value),
-      bucket_current: num(row.getCell(3).value),
-      bucket_30: num(row.getCell(4).value),
-      bucket_60: num(row.getCell(5).value),
-      bucket_90: num(row.getCell(6).value),
-      bucket_120_plus: num(row.getCell(7).value),
-      closing_ar: num(row.getCell(8).value),
+      financial_class_name: text(cellValue(row, 2)),
+      bucket_current: num(cellValue(row, 3)),
+      bucket_30: num(cellValue(row, 4)),
+      bucket_60: num(cellValue(row, 5)),
+      bucket_90: num(cellValue(row, 6)),
+      bucket_120_plus: num(cellValue(row, 7)),
+      closing_ar: num(cellValue(row, 8)),
     });
   }
   return { rows };
@@ -88,14 +102,14 @@ function parseFinancialActivity(sheet) {
   let grandTotal = null;
   for (let r = header + 1; r <= sheet.rowCount; r++) {
     const row = sheet.getRow(r);
-    const label = text(row.getCell(1).value);
+    const label = text(cellValue(row, 1));
     if (!label) continue;
 
     const record = {
-      units: num(row.getCell(3).value),
-      charges: num(row.getCell(4).value),
-      payments: num(row.getCell(5).value),
-      adjustments: num(row.getCell(6).value),
+      units: num(cellValue(row, 3)),
+      charges: num(cellValue(row, 4)),
+      payments: num(cellValue(row, 5)),
+      adjustments: num(cellValue(row, 6)),
     };
 
     if (/grand total/i.test(label)) {
@@ -112,51 +126,151 @@ function parseFinancialActivity(sheet) {
   return { rows, grandTotal };
 }
 
+const BUCKETS = [
+  "bucket_current",
+  "bucket_30",
+  "bucket_60",
+  "bucket_90",
+  "bucket_120_plus",
+];
+
+function zeroBuckets() {
+  return { bucket_current: 0, bucket_30: 0, bucket_60: 0, bucket_90: 0, bucket_120_plus: 0, total: 0 };
+}
+
+function addBuckets(target, row) {
+  for (let i = 0; i < BUCKETS.length; i++) {
+    target[BUCKETS[i]] += num(cellValue(row, 5 + i)) ?? 0;
+  }
+  target.total += num(cellValue(row, 10)) ?? 0;
+}
+
 /**
- * "Carrier AR" is hierarchical: carrier, then provider, then a repeating
- * Chart / Visit ID / CPT block. Only the leaf rows are account-level, and
- * they're identified by the header row that precedes them.
+ * "Carrier AR" nests four levels deep:
+ *
+ *   Carrier            c2 = name, aging figures, c1 empty
+ *     Provider         c1 = name, aging figures
+ *       Chart/Visit    c1 = "CHART n", c3 = "VISIT n", no figures
+ *         CPT line     c4 = code, aging figures      <-- the only leaf
+ *     "<Provider> Total:"                            <-- subtotal, must not be summed
+ *
+ * Only CPT lines carry real money; everything else is a heading or a subtotal,
+ * and summing them alongside the leaves would double-count. Accounts are
+ * rolled up to chart+visit, which is the claim grain.
  */
 function parseCarrierAr(sheet) {
   let carrier = null;
-  let provider = null;
-  let inDetail = false;
-  const accounts = [];
+  let chart = null;
+  let visit = null;
+
+  // The provider block currently open, closed by its own "Total:" row. Matching
+  // positionally rather than by name matters: the same provider appears under
+  // several carriers, and carrier totals are spelled the same way as provider
+  // totals, so name matching misassigns them.
+  let openProvider = null;
+  let carrierRunning = zeroBuckets();
+
+  const claims = new Map();
+  let cptLines = 0;
+  const checks = { providers: 0, providerMismatch: 0, carriers: 0, carrierMismatch: 0, drift: 0 };
+
+  const closeProvider = () => {
+    if (!openProvider) return;
+    checks.providers++;
+    const diff = round2(openProvider.stated.total - openProvider.parsed.total);
+    if (Math.abs(diff) >= 0.01) {
+      checks.providerMismatch++;
+      checks.drift += diff;
+    }
+    openProvider = null;
+  };
 
   for (let r = 1; r <= sheet.rowCount; r++) {
     const row = sheet.getRow(r);
-    const c1 = text(row.getCell(1).value);
-    const c2 = text(row.getCell(2).value);
-    const c3 = text(row.getCell(3).value);
+    const c1 = text(cellValue(row, 1));
+    const c2 = text(cellValue(row, 2));
+    const c3 = text(cellValue(row, 3));
+    const c4 = text(cellValue(row, 4));
+    const total = num(cellValue(row, 10));
+    const hasFigures = total !== null;
 
-    // Header of a detail block — the rows beneath it are accounts.
-    if (c2 === "Chart" && c3 === "Visit ID") { inDetail = true; continue; }
-    if (c1 === "Code" && c2 === "Carrier Name") { inDetail = false; continue; }
+    // Column headings, repeated once per detail block.
+    if (c2 === "Chart" && c3 === "Visit ID") continue;
+    if (c4 === "CPT Code") continue;
+    if (c1 === "Code" && c2 === "Carrier Name") continue;
+    if (c1 && /^provider name/i.test(c1)) continue;
 
-    if (c1 && /^provider name/i.test(c1)) { inDetail = false; continue; }
+    // A "… Total:" row closes whichever block is currently open.
+    if (c2 && /total:?\s*$/i.test(c2)) {
+      if (openProvider) {
+        addBuckets(openProvider.stated, row);
+        closeProvider();
+      } else {
+        // No provider open, so this closes the carrier.
+        checks.carriers++;
+        if (Math.abs(round2(total - carrierRunning.total)) >= 0.01) {
+          checks.carrierMismatch++;
+        }
+        carrierRunning = zeroBuckets();
+      }
+      continue;
+    }
 
-    if (inDetail && c1) {
-      accounts.push({
+    // CPT service line — the only row that contributes money.
+    if (c4 && hasFigures) {
+      cptLines++;
+      const key = `${carrier}||${openProvider?.name}||${chart}||${visit}`;
+      const claim = claims.get(key) ?? {
         carrier_name: carrier,
-        provider_name: provider,
-        chart: c1,
-        visit_id: c3,
-        cpt_code: text(row.getCell(4).value),
-        bucket_current: num(row.getCell(5).value),
-        bucket_30: num(row.getCell(6).value),
-        bucket_60: num(row.getCell(7).value),
-        bucket_90: num(row.getCell(8).value),
-        bucket_120_plus: num(row.getCell(9).value),
-        total: num(row.getCell(10).value),
-      });
-    } else if (c1 && !inDetail) {
-      // Carrier/provider context lines carry no aging figures of their own.
-      if (num(row.getCell(5).value) === null) carrier = c1;
-      else provider = c1;
+        provider_name: openProvider?.name ?? null,
+        chart,
+        visit_id: visit,
+        cpt_lines: 0,
+        ...zeroBuckets(),
+      };
+      claim.cpt_lines++;
+      addBuckets(claim, row);
+      claims.set(key, claim);
+
+      if (openProvider) addBuckets(openProvider.parsed, row);
+      addBuckets(carrierRunning, row);
+      continue;
+    }
+
+    // Chart/visit heading — the claim the following CPT lines belong to.
+    // Detected structurally (identifiers in columns 1 and 3, no CPT code, no
+    // figures) rather than by matching "CHART n": de-identified exports use
+    // that placeholder, but live ones carry real chart and visit numbers.
+    if (c1 && c3 && !c2 && !c4 && !hasFigures) {
+      chart = c1;
+      visit = c3;
+      continue;
+    }
+
+    // Provider line: name in column 1 with its own figures. Opens a block.
+    if (c1 && hasFigures) {
+      closeProvider();
+      openProvider = { name: c1, stated: zeroBuckets(), parsed: zeroBuckets() };
+      chart = null;
+      visit = null;
+      continue;
+    }
+
+    // Carrier line: name in column 2, nothing in column 1.
+    if (!c1 && c2 && hasFigures) {
+      closeProvider();
+      carrier = c2;
+      carrierRunning = zeroBuckets();
+      chart = null;
+      visit = null;
     }
   }
-  return { accounts };
+  closeProvider();
+
+  return { claims: Array.from(claims.values()), cptLines, checks };
 }
+
+const round2 = (n) => Math.round(n * 100) / 100;
 
 async function main() {
   const file = process.argv[2];
@@ -217,19 +331,36 @@ async function main() {
     console.log(`  units          : ${gt.units?.toLocaleString("en-US") ?? "—"}`);
   }
 
-  const accounts = result.carrier_ar.accounts;
-  console.log(`\ncarrier_ar       : ${accounts.length} account rows`);
-  const acct120 = accounts.filter((a) => (a.bucket_120_plus ?? 0) > 0);
-  console.log(`  accounts 120+  : ${acct120.length.toLocaleString("en-US")}`);
+  const { claims, cptLines, checks } = result.carrier_ar;
+  const carrierTotal = claims.reduce((s, a) => s + a.total, 0);
+  const charts = new Set(claims.map((c) => c.chart)).size;
+  const claims120 = claims.filter((c) => c.bucket_120_plus > 0);
+
+  console.log(`\ncarrier_ar       : ${cptLines.toLocaleString("en-US")} CPT lines`);
+  console.log(`  claims         : ${claims.length.toLocaleString("en-US")} (chart+visit)`);
+  console.log(`  patient charts : ${charts.toLocaleString("en-US")}`);
+  console.log(`  total          : ${money(carrierTotal)}`);
+  console.log(`  claims 120+    : ${claims120.length.toLocaleString("en-US")}`);
   console.log(
-    `  amount 120+    : ${money(acct120.reduce((s, a) => s + (a.bucket_120_plus ?? 0), 0))}`,
+    `  amount 120+    : ${money(claims120.reduce((s, c) => s + c.bucket_120_plus, 0))}`,
   );
 
-  // The two sheets are independent exports of the same month, so a mismatch
-  // means one of them was parsed wrong.
-  const drift = Math.abs(arTotal - accounts.reduce((s, a) => s + (a.total ?? 0), 0));
+  // The sheet states its own provider subtotals. If what we summed beneath a
+  // provider doesn't match its subtotal, the parse is wrong — that check is
+  // internal to the sheet and must hold.
+  const clean = checks.providerMismatch === 0 && checks.carrierMismatch === 0;
   console.log(
-    `\ncross-check      : AR summary vs carrier detail differ by ${money(drift)}`,
+    `\nreconciliation   : ${checks.providers} provider blocks, ` +
+      `${checks.providerMismatch} mismatched` +
+      ` | ${checks.carriers} carrier blocks, ${checks.carrierMismatch} mismatched` +
+      (clean ? "  ✓" : `  drift ${money(checks.drift)}`),
+  );
+
+  // This one is NOT expected to match: the carrier report covers balances
+  // assigned to a carrier, while the AR summary covers everything.
+  console.log(
+    `\nfor information  : AR summary ${money(arTotal)} vs carrier detail ` +
+      `${money(carrierTotal)} — difference ${money(arTotal - carrierTotal)}`,
   );
   console.log();
 }
