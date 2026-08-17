@@ -1,17 +1,25 @@
 import { createClient } from "@/lib/supabase/server";
+import type { Tables } from "@/lib/supabase/database.types";
 
 import { signOut } from "./actions";
 
 export const metadata = { title: "Clinics · MOne" };
 
-type Clinic = Record<string, unknown>;
+type Clinic = Pick<
+  Tables<"clinics">,
+  "id" | "name" | "code" | "status" | "go_live_date"
+>;
 
-/** Renders a cell for whatever shape the column happens to hold. */
-function formatCell(value: unknown) {
-  if (value === null || value === undefined) return "—";
-  if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
+/** Fixed locale so the server-rendered date doesn't drift by deploy region. */
+function formatDate(value: string | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 export default async function ClinicsPage() {
@@ -20,18 +28,23 @@ export default async function ClinicsPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // The columns aren't pinned down yet, so select everything RLS allows and
-  // derive the table headers from the rows that come back.
-  const { data, error } = await supabase.from("clinics").select("*");
-  const clinics = (data ?? []) as Clinic[];
-  const columns = clinics.length > 0 ? Object.keys(clinics[0]) : [];
+  const { data, error } = await supabase
+    .from("clinics")
+    .select("id, name, code, status, go_live_date")
+    .order("name", { ascending: true });
+
+  const clinics: Clinic[] = data ?? [];
 
   return (
     <main className="page">
       <header className="page-header">
         <div>
           <h1>Clinics</h1>
-          <p className="muted">Signed in as {user?.email ?? "unknown"}</p>
+          <p className="muted">
+            {clinics.length > 0
+              ? `${clinics.length} clinic${clinics.length === 1 ? "" : "s"} · ${user?.email ?? ""}`
+              : (user?.email ?? "")}
+          </p>
         </div>
         <form action={signOut}>
           <button type="submit" className="secondary">
@@ -54,17 +67,23 @@ export default async function ClinicsPage() {
           <table>
             <thead>
               <tr>
-                {columns.map((column) => (
-                  <th key={column}>{column}</th>
-                ))}
+                <th>Name</th>
+                <th>Code</th>
+                <th>Status</th>
+                <th>Go live</th>
               </tr>
             </thead>
             <tbody>
-              {clinics.map((clinic, index) => (
-                <tr key={String(clinic.id ?? index)}>
-                  {columns.map((column) => (
-                    <td key={column}>{formatCell(clinic[column])}</td>
-                  ))}
+              {clinics.map((clinic) => (
+                <tr key={clinic.id}>
+                  <td>{clinic.name}</td>
+                  <td className="muted">{clinic.code ?? "—"}</td>
+                  <td>
+                    <span className={`pill pill--${clinic.status}`}>
+                      {clinic.status}
+                    </span>
+                  </td>
+                  <td className="muted">{formatDate(clinic.go_live_date)}</td>
                 </tr>
               ))}
             </tbody>

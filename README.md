@@ -20,7 +20,9 @@ The app runs at http://localhost:3000.
 | `src/lib/supabase/client.ts` | Supabase client for client components |
 | `src/lib/supabase/server.ts` | Supabase client for server components, route handlers and server actions |
 | `src/lib/supabase/middleware.ts` | Session refresh + route protection used by the middleware |
+| `src/lib/supabase/database.types.ts` | Generated schema types — do not edit by hand |
 | `src/app/login` | Email/password sign-in |
+| `src/app/auth/callback` | Exchanges the `code` from email links (recovery, confirmation, OAuth) for a session |
 | `src/app/clinics` | Lists rows from the `clinics` table |
 
 ## Auth and data access
@@ -33,7 +35,20 @@ this app, and none should be added to `NEXT_PUBLIC_*` variables.
 Every route except `/login` and `/auth/*` requires a session; adjust
 `PUBLIC_ROUTES` in `src/lib/supabase/middleware.ts` to change that.
 
-The clinics page does `select('*')` and derives its table columns from the rows
-it gets back, since the `clinics` schema isn't mirrored in this repo yet. Once
-the columns are settled, replace that with an explicit column list and generated
-Supabase types.
+## Database types
+
+Both Supabase clients are typed against `src/lib/supabase/database.types.ts`, so
+table and column names are checked at compile time. Regenerate it after any
+schema change:
+
+```bash
+npx supabase gen types typescript --project-id azrszucuueqxhvkzyhfm > src/lib/supabase/database.types.ts
+```
+
+That needs `npx supabase login` once per machine.
+
+## Redirect URLs
+
+For the `/auth/callback` route to work outside local development, add the
+deployed origin under **Authentication → URL Configuration → Redirect URLs** in
+the Supabase dashboard. `http://localhost:3000/**` is allowed by default.

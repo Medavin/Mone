@@ -165,3 +165,53 @@ th {
 tbody tr:last-child td {
   border-bottom: none;
 }
+
+/*
+ * `status` is free text, so the base pill is the fallback for any value we
+ * haven't styled explicitly. Add modifiers as the vocabulary settles.
+ */
+.pill {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.pill--active,
+.pill--live {
+  color: #0a6634;
+  background: #e4f5ea;
+  border-color: #b7e2c6;
+}
+
+.pill--pending,
+.pill--onboarding {
+  color: #8a5a00;
+  background: #fdf1dc;
+  border-color: #f0d9a8;
+}
+
+.pill--inactive,
+.pill--churned {
+  color: var(--muted);
+  background: var(--bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  .pill--active,
+  .pill--live {
+    color: #7fd8a0;
+    background: #10291b;
+    border-color: #245537;
+  }
+
+  .pill--pending,
+  .pill--onboarding {
+    color: #f0c473;
+    background: #2b2113;
+    border-color: #55401d;
+  }
+}
