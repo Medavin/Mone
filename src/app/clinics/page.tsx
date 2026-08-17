@@ -13,8 +13,14 @@ import { Delta } from "./delta";
 
 export const metadata = { title: "Clinics · MOne" };
 
-/** Enough history to find each clinic's latest month plus the one before it. */
-const LOOKBACK_MONTHS = 13;
+/**
+ * Row caps. PostgREST applies its own default (commonly 1000), which would
+ * silently truncate and quietly under-report totals, so ask for an explicit
+ * limit and tell the reader when we hit it. Rows come back newest-first, so a
+ * truncated fetch still yields each clinic's most recent months.
+ */
+const AR_ROW_CAP = 5000;
+const ACTIVITY_ROW_CAP = 20000;
 
 type Metrics = {
   charges: number;
@@ -24,18 +30,14 @@ type Metrics = {
   new_patients: number;
 };
 
-const EMPTY: Metrics = {
-  charges: 0,
-  payments: 0,
-  adjustments: 0,
-  visits: 0,
-  new_patients: 0,
-};
-
-function monthsAgo(count: number) {
-  const date = new Date();
-  date.setMonth(date.getMonth() - count);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-01`;
+function emptyMetrics(): Metrics {
+  return {
+    charges: 0,
+    payments: 0,
+    adjustments: 0,
+    visits: 0,
+    new_patients: 0,
+  };
 }
 
 export default async function ClinicsPage() {
@@ -44,8 +46,6 @@ export default async function ClinicsPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const cutoff = monthsAgo(LOOKBACK_MONTHS);
-
   const [clinicsResult, arResult, activityResult, camResult] =
     await Promise.all([
       supabase
@@ -53,16 +53,20 @@ export default async function ClinicsPage() {
         .select("id, name, code, status")
         .order("name", { ascending: true }),
       // Pre-aggregated view: AR already totalled across financial classes.
+      // No date floor — a clinic whose last import is old should still show
+      // its most recent figures rather than reading as having none.
       supabase
         .from("ar_monthly_clinic_total")
         .select("clinic_id, period_month, closing_ar, bucket_120_plus")
-        .gte("period_month", cutoff),
+        .order("period_month", { ascending: false })
+        .limit(AR_ROW_CAP),
       supabase
         .from("activity_monthly")
         .select(
           "clinic_id, period_month, charges, payments, adjustments, visits, new_patients",
         )
-        .gte("period_month", cutoff),
+        .order("period_month", { ascending: false })
+        .limit(ACTIVITY_ROW_CAP),
       // Open assignment only — effective_to is null while a CAM still owns it.
       supabase
         .from("cam_assignments")
@@ -73,6 +77,11 @@ export default async function ClinicsPage() {
   const clinics = clinicsResult.data ?? [];
   const error =
     clinicsResult.error ?? arResult.error ?? activityResult.error ?? null;
+
+  const arRowCount = arResult.data?.length ?? 0;
+  const activityRowCount = activityResult.data?.length ?? 0;
+  const truncated =
+    arRowCount >= AR_ROW_CAP || activityRowCount >= ACTIVITY_ROW_CAP;
 
   /** clinic_id -> CAM name */
   const camByClinic = new Map<number, string>();
@@ -105,7 +114,7 @@ export default async function ClinicsPage() {
   for (const row of activityResult.data ?? []) {
     const months =
       activityByClinic.get(row.clinic_id) ?? new Map<string, Metrics>();
-    const total = months.get(row.period_month) ?? { ...EMPTY };
+    const total = months.get(row.period_month) ?? emptyMetrics();
     total.charges += row.charges ?? 0;
     total.payments += row.payments ?? 0;
     total.adjustments += row.adjustments ?? 0;
@@ -115,17 +124,20 @@ export default async function ClinicsPage() {
     activityByClinic.set(row.clinic_id, months);
   }
 
-  /** Latest month and the one before it, for the comparison columns. */
+  /**
+   * Latest month and the one before it. `current` is null when the clinic has
+   * no activity at all — rendering that as $0 would claim a real zero, which
+   * is a different thing from having no data.
+   */
   function recentMonths(clinicId: number) {
     const months = activityByClinic.get(clinicId);
-    if (!months) return { period: null, current: EMPTY, previous: EMPTY };
-    const ordered = Array.from(months.keys()).sort((a, b) =>
-      b.localeCompare(a),
-    );
+    const ordered = months
+      ? Array.from(months.keys()).sort((a, b) => b.localeCompare(a))
+      : [];
     return {
       period: ordered[0] ?? null,
-      current: (ordered[0] && months.get(ordered[0])) || EMPTY,
-      previous: (ordered[1] && months.get(ordered[1])) || EMPTY,
+      current: ordered[0] ? (months?.get(ordered[0]) ?? null) : null,
+      previous: ordered[1] ? (months?.get(ordered[1]) ?? null) : null,
     };
   }
 
@@ -223,28 +235,34 @@ export default async function ClinicsPage() {
                         {formatCurrency(ar?.bucket_120_plus)}
                       </td>
                       <td className="num">
-                        {formatCurrency(current.charges)}
-                        <Delta current={current.charges} previous={previous.charges} />
-                      </td>
-                      <td className="num">
-                        {formatCurrency(current.payments)}
+                        {formatCurrency(current?.charges)}
                         <Delta
-                          current={current.payments}
-                          previous={previous.payments}
+                          current={current?.charges}
+                          previous={previous?.charges}
                         />
                       </td>
                       <td className="num">
-                        {formatCurrency(current.adjustments)}
-                      </td>
-                      <td className="num">
-                        {formatNumber(current.visits)}
-                        <Delta current={current.visits} previous={previous.visits} />
-                      </td>
-                      <td className="num">
-                        {formatNumber(current.new_patients)}
+                        {formatCurrency(current?.payments)}
                         <Delta
-                          current={current.new_patients}
-                          previous={previous.new_patients}
+                          current={current?.payments}
+                          previous={previous?.payments}
+                        />
+                      </td>
+                      <td className="num">
+                        {formatCurrency(current?.adjustments)}
+                      </td>
+                      <td className="num">
+                        {formatNumber(current?.visits)}
+                        <Delta
+                          current={current?.visits}
+                          previous={previous?.visits}
+                        />
+                      </td>
+                      <td className="num">
+                        {formatNumber(current?.new_patients)}
+                        <Delta
+                          current={current?.new_patients}
+                          previous={previous?.new_patients}
                         />
                       </td>
                     </tr>
@@ -253,6 +271,22 @@ export default async function ClinicsPage() {
               </tbody>
             </table>
           </div>
+
+          {arRowCount === 0 && activityRowCount === 0 ? (
+            <p className="notes">
+              Clinics loaded, but no AR or activity rows were returned. Either
+              the monthly imports haven&rsquo;t run yet, or this account&rsquo;s
+              row-level security policies don&rsquo;t cover those tables.
+            </p>
+          ) : null}
+
+          {truncated ? (
+            <p className="error" role="alert">
+              Hit the {formatNumber(AR_ROW_CAP)}/
+              {formatNumber(ACTIVITY_ROW_CAP)} row cap — figures may be
+              incomplete. Move this aggregation into a database view.
+            </p>
+          ) : null}
 
           <p className="muted footnote">
             Figures are monthly — the database has no daily grain. &ldquo;Period&rdquo;

@@ -8,11 +8,11 @@ export function Delta({
   current,
   previous,
 }: {
-  current: number;
-  previous: number;
+  current: number | null | undefined;
+  previous: number | null | undefined;
 }) {
-  // No prior month to compare against, so there's no change to report.
-  if (!previous) return null;
+  // Nothing to compare against, so there's no change to report.
+  if (!previous || current === null || current === undefined) return null;
 
   const change = (current - previous) / Math.abs(previous);
   if (!Number.isFinite(change)) return null;
