@@ -1,7 +1,12 @@
 import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
-import { formatCurrency, formatMonth, formatNumber } from "@/lib/format";
+import {
+  formatCurrency,
+  formatMonth,
+  formatNumber,
+  statusSlug,
+} from "@/lib/format";
 
 import { signOut } from "./actions";
 import { Delta } from "./delta";
@@ -208,7 +213,7 @@ export default async function ClinicsPage() {
                         {camByClinic.get(clinic.id) ?? "—"}
                       </td>
                       <td>
-                        <span className={`pill pill--${clinic.status}`}>
+                        <span className={`pill pill--${statusSlug(clinic.status)}`}>
                           {clinic.status}
                         </span>
                       </td>

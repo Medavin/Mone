@@ -288,38 +288,60 @@ th.num {
   white-space: nowrap;
 }
 
-.pill--active,
-.pill--live {
+/* Enabled — running normally. */
+.pill--enable,
+.pill--enabled,
+.pill--active {
   color: #0a6634;
   background: #e4f5ea;
   border-color: #b7e2c6;
 }
 
-.pill--pending,
-.pill--onboarding {
+/* Paused — temporarily stopped, expected back. */
+.pill--pause,
+.pill--paused {
   color: #8a5a00;
   background: #fdf1dc;
   border-color: #f0d9a8;
 }
 
-.pill--inactive,
-.pill--churned {
-  color: var(--muted);
+/* New or onboarding — not yet fully live. */
+.pill--new,
+.pill--onboarding,
+.pill--new-onboarding {
+  color: #1a4f8a;
+  background: #e5eefa;
+  border-color: #b9d1ee;
+}
+
+/* Terminated — gone. */
+.pill--terminated {
+  color: var(--danger);
   background: var(--bg);
+  border-color: var(--border);
 }
 
 @media (prefers-color-scheme: dark) {
-  .pill--active,
-  .pill--live {
+  .pill--enable,
+  .pill--enabled,
+  .pill--active {
     color: #7fd8a0;
     background: #10291b;
     border-color: #245537;
   }
 
-  .pill--pending,
-  .pill--onboarding {
+  .pill--pause,
+  .pill--paused {
     color: #f0c473;
     background: #2b2113;
     border-color: #55401d;
+  }
+
+  .pill--new,
+  .pill--onboarding,
+  .pill--new-onboarding {
+    color: #8fb8ee;
+    background: #131f2e;
+    border-color: #274363;
   }
 }

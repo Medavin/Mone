@@ -51,7 +51,9 @@ create table if not exists public.activity_daily (
   visits              integer,
   units               integer,
   new_patients        integer,
-  claims_submitted    integer,          -- "claims in module"
+  -- Point-in-time count of claims/accounts sitting in AdvancedMD pending AR,
+  -- not a daily flow. Read the latest date rather than summing a range.
+  claims_in_module    integer,
   source_batch_id     bigint references public.import_batches (id),
   updated_at          timestamptz not null default now(),
   unique (clinic_id, financial_class_id, activity_date)
@@ -161,7 +163,61 @@ create index if not exists crl_entries_clinic_status_idx
 
 
 -- ---------------------------------------------------------------------------
--- 6. Row-level security
+-- 6. Tasks and files
+--
+-- Anyone can assign a task to anyone. "In/Out" is a query, not a column:
+-- In  = assigned_to = auth.uid(), Out = assigned_by = auth.uid().
+-- Accounts and files attach many-to-many, since a task can cover several.
+-- Files live in Supabase Storage; only the object path is recorded here.
+-- ---------------------------------------------------------------------------
+
+create table if not exists public.files (
+  id            bigint generated always as identity primary key,
+  clinic_id     bigint references public.clinics (id) on delete cascade,
+  storage_path  text not null unique,   -- object path in Supabase Storage
+  file_name     text not null,
+  mime_type     text,
+  size_bytes    bigint,
+  uploaded_by   uuid references public.profiles (id),
+  uploaded_at   timestamptz not null default now()
+);
+
+create table if not exists public.tasks (
+  id            bigint generated always as identity primary key,
+  clinic_id     bigint references public.clinics (id) on delete cascade,
+  title         text   not null,
+  detail        text,
+  assigned_to   uuid   not null references public.profiles (id),
+  assigned_by   uuid   not null references public.profiles (id),
+  status        text   not null default 'open'
+                  check (status in
+                    ('open','in_progress','blocked','done','cancelled')),
+  due_date      date,
+  created_at    timestamptz not null default now(),
+  completed_at  timestamptz,
+  updated_at    timestamptz not null default now()
+);
+
+create index if not exists tasks_assigned_to_idx
+  on public.tasks (assigned_to, status, due_date);
+create index if not exists tasks_assigned_by_idx
+  on public.tasks (assigned_by, status, due_date);
+
+create table if not exists public.task_accounts (
+  task_id     bigint not null references public.tasks (id) on delete cascade,
+  account_id  bigint not null references public.accounts (id) on delete cascade,
+  primary key (task_id, account_id)
+);
+
+create table if not exists public.task_files (
+  task_id  bigint not null references public.tasks (id) on delete cascade,
+  file_id  bigint not null references public.files (id) on delete cascade,
+  primary key (task_id, file_id)
+);
+
+
+-- ---------------------------------------------------------------------------
+-- 7. Row-level security
 --
 -- Mirrors the existing model: visibility flows through can_see_clinic(), so
 -- CAMs keep seeing only their assigned clinics. Reads are open to anyone who
@@ -205,9 +261,64 @@ create policy collectors_select on public.collectors
 create policy collectors_write on public.collectors
   for all using (public.is_admin()) with check (public.is_admin());
 
+-- Tasks and files. A task with no clinic is general and visible to everyone
+-- signed in; a clinic-scoped one follows the same visibility as its clinic.
+alter table public.tasks         enable row level security;
+alter table public.files         enable row level security;
+alter table public.task_accounts enable row level security;
+alter table public.task_files    enable row level security;
+
+create policy tasks_select on public.tasks
+  for select to authenticated using (
+    assigned_to = (select auth.uid())
+    or assigned_by = (select auth.uid())
+    or clinic_id is null
+    or public.can_see_clinic(clinic_id)
+  );
+-- Anyone may assign to anyone, but only as themselves.
+create policy tasks_insert on public.tasks
+  for insert to authenticated
+  with check (assigned_by = (select auth.uid()));
+create policy tasks_update on public.tasks
+  for update to authenticated using (
+    assigned_to = (select auth.uid())
+    or assigned_by = (select auth.uid())
+    or public.is_admin()
+  );
+create policy tasks_delete on public.tasks
+  for delete to authenticated using (
+    assigned_by = (select auth.uid()) or public.is_admin()
+  );
+
+create policy files_select on public.files
+  for select to authenticated using (
+    clinic_id is null or public.can_see_clinic(clinic_id)
+  );
+create policy files_write on public.files
+  for all to authenticated using (
+    clinic_id is null or public.can_see_clinic(clinic_id)
+  ) with check (
+    clinic_id is null or public.can_see_clinic(clinic_id)
+  );
+
+-- Link tables inherit visibility from the task they belong to.
+create policy task_accounts_all on public.task_accounts
+  for all to authenticated using (
+    exists (select 1 from public.tasks t where t.id = task_id)
+  ) with check (
+    exists (select 1 from public.tasks t where t.id = task_id)
+  );
+
+create policy task_files_all on public.task_files
+  for all to authenticated using (
+    exists (select 1 from public.tasks t where t.id = task_id)
+  ) with check (
+    exists (select 1 from public.tasks t where t.id = task_id)
+  );
+
 
 -- ---------------------------------------------------------------------------
--- 7. Dashboard rollup
+-- 8. Dashboard rollup
 --
 -- The dashboard needs counts and amounts per clinic per month. Doing it in a
 -- view keeps the aggregation in one place.

@@ -47,6 +47,18 @@ export function formatMonth(value: string | null | undefined) {
 }
 
 /**
+ * `clinics.status` is free text ("Enable", "New/onboarding", …), so turn it
+ * into a safe CSS class suffix. Unknown values fall back to the base pill.
+ */
+export function statusSlug(status: string) {
+  return status
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+/**
  * Date-only columns arrive as "YYYY-MM-DD". Parsing that directly treats it as
  * UTC midnight, which renders as the previous day west of Greenwich — so pin
  * the parts explicitly and build a local date.

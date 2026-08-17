@@ -2,7 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import { formatCurrency, formatDate, formatMonth, formatNumber } from "@/lib/format";
+import {
+  formatCurrency,
+  formatDate,
+  formatMonth,
+  formatNumber,
+  statusSlug,
+} from "@/lib/format";
 
 /** Months of history shown in the activity table. */
 const HISTORY_MONTHS = 12;
@@ -131,7 +137,7 @@ export default async function ClinicPage({
           <h1>{clinic.name}</h1>
           <p className="muted">
             {clinic.code ? `${clinic.code} · ` : ""}
-            <span className={`pill pill--${clinic.status}`}>
+            <span className={`pill pill--${statusSlug(clinic.status)}`}>
               {clinic.status}
             </span>
             {clinic.go_live_date
