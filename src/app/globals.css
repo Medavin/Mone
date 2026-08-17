@@ -206,6 +206,63 @@ textarea {
   font-size: 0.95rem;
 }
 
+/* Clinic dashboard ------------------------------------------------------ */
+
+.contact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin: 0 0 0.5rem;
+  padding: 0.9rem 1.1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.contact dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.contact dd {
+  margin: 0.15rem 0 0;
+}
+
+/* Side-by-side panels that stack on narrow screens. */
+.columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.5rem;
+}
+
+.see-all {
+  font-size: 0.78rem;
+  font-weight: 400;
+  margin-left: 0.5rem;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.list li {
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.list li:last-child {
+  border-bottom: none;
+}
+
+.list-main {
+  display: block;
+  margin: 0.25rem 0;
+}
+
 /* Timeline -------------------------------------------------------------- */
 
 .timeline {

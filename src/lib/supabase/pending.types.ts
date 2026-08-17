@@ -240,6 +240,44 @@ export type PendingTables = {
   project_files: Table<{ project_id: number; file_id: number }, "project_id" | "file_id">;
 };
 
+/** Views the same migration creates. Read-only, so no Insert/Update. */
+export type PendingViews = {
+  account_summary_monthly: {
+    Row: {
+      clinic_id: number | null;
+      as_of_month: DateOnly | null;
+      account_count: number | null;
+      total_balance: number | null;
+      accounts_120_plus: number | null;
+      amount_120_plus: number | null;
+      accounts_sent_to_cam: number | null;
+      amount_sent_to_cam: number | null;
+      accounts_sent_to_collector: number | null;
+      amount_sent_to_collector: number | null;
+    };
+    Relationships: [
+      Rel<"accounts_clinic_id_fkey", "clinic_id", "clinics">,
+    ];
+  };
+  project_tat: {
+    Row: {
+      project_id: number | null;
+      clinic_id: number | null;
+      name: string | null;
+      status: WorkStatus | null;
+      progress_pct: number | null;
+      amount: number | null;
+      claim_count: number | null;
+      assigned_to: string | null;
+      target_tat_days: number | null;
+      elapsed_days: number | null;
+      is_complete: boolean | null;
+      is_overdue: boolean | null;
+    };
+    Relationships: [Rel<"projects_clinic_id_fkey", "clinic_id", "clinics">];
+  };
+};
+
 /** Columns added to `clinics` by the same migration. */
 type ClinicContactColumns = {
   street: string | null;
@@ -264,10 +302,11 @@ type ExtendedClinics = Omit<GeneratedClinics, "Row" | "Insert" | "Update"> & {
 
 /** The generated schema plus everything the pending migration adds. */
 export type AppDatabase = Omit<Generated, "public"> & {
-  public: Omit<GeneratedPublic, "Tables"> & {
+  public: Omit<GeneratedPublic, "Tables" | "Views"> & {
     Tables: Omit<GeneratedTables, "clinics"> & {
       clinics: ExtendedClinics;
     } & PendingTables;
+    Views: GeneratedPublic["Views"] & PendingViews;
   };
 };
 
