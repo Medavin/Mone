@@ -354,7 +354,18 @@ export default async function DashboardPage({
     const d = prev ? delta(cur[key], prev[key]) : null;
     return (
       <tr key={label} className="border-b border-hairline/60">
-        <td className="py-2">{label}</td>
+        <td className="py-2">
+          {/* Every figure opens the clinics behind it. A number with nowhere
+              to go is a report; one you can open is a tool. */}
+          <Link
+            href={`/dashboard/breakdown?measure=${key}&from=${from}&to=${to}${picked
+              .map((id) => `&clinic=${id}`)
+              .join("")}`}
+            className="hover:text-accent hover:underline"
+          >
+            {label}
+          </Link>
+        </td>
         <td className="tnum py-2 text-right">{prev ? fmt(prev[key]) : "—"}</td>
         <td className="tnum py-2 text-right font-medium">{fmt(cur[key])}</td>
         <td className={`tnum py-2 text-right ${d && d.up ? "text-good" : "text-bad"}`}>
@@ -459,7 +470,18 @@ export default async function DashboardPage({
             </Panel>
 
             {/* 2 — A/R actions */}
-            <Panel id="actions" title="A/R actions" subtitle={actionLatest ? monthLabel(actionLatest) : undefined}>
+            <Panel
+              id="actions"
+              title="A/R actions"
+              subtitle={actionLatest ? monthLabel(actionLatest) : undefined}
+              right={
+                totalActions > 0 ? (
+                  <Link href="/actions" className="text-xs text-accent hover:underline print:hidden">
+                    Open the report →
+                  </Link>
+                ) : undefined
+              }
+            >
               {totalActions === 0 ? (
                 <Missing needs="No collection action report imported yet. Once one is, this shows actions worked, how many collectors worked them, and the average each." />
               ) : (
