@@ -7,8 +7,14 @@
 }
 
 body {
-  background: #F7F8F9;
-  color: #0D1215;
+  /* A very slight warmth at the top so the header sits on something rather
+     than floating on flat grey. Subtle enough that figures still read as
+     printed on paper. */
+  background:
+    radial-gradient(1200px 320px at 50% -120px, rgba(0,149,216,0.12), transparent 70%),
+    #EDF2F4;
+  background-attachment: fixed;
+  color: #101A20;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -18,6 +24,35 @@ body {
   font-feature-settings: "tnum";
 }
 
+/* The small upper-case labels above every figure. One class, so they cannot
+   drift apart across screens. */
+.eyebrow {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #5C6B75;
+}
+
+/* Keyboard users get a visible ring everywhere, not just where I remembered. */
+:where(a, button, select, input, textarea, [tabindex]):focus-visible {
+  outline: 2px solid #0095D8;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
+}
+
+/* Printing is how a PDF gets made, so the printed page has to be the report
+   and nothing else: no navigation, no buttons, no page background. */
+@media print {
+  header, nav, .print\:hidden { display: none !important; }
+  body { background: #fff !important; }
+  main { max-width: none !important; padding: 0 !important; }
+  table { page-break-inside: auto; }
+  tr { page-break-inside: avoid; page-break-after: auto; }
+  thead { display: table-header-group; }
 }

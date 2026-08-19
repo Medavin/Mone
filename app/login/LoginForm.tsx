@@ -28,7 +28,11 @@ export default function LoginForm() {
       return;
     }
 
-    router.push("/clinics");
+    // "/" resolves each person's own landing page (my_landing_page), which is
+    // set per employee and falls back to their role. Sending everyone straight
+    // to /clinics — as this did — bypassed that entirely, so an admin and an
+    // exec both landed on the clinic list no matter what was configured.
+    router.push("/");
     router.refresh();
   }
 
@@ -42,7 +46,7 @@ export default function LoginForm() {
           onChange={(e) => setEmail(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && signIn()}
           autoComplete="username"
-          className="mt-1 w-full rounded border border-hairline bg-white px-3 py-2
+          className="mt-1 w-full rounded-card border border-hairline bg-surface shadow-card px-3 py-2
                      outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
         />
       </label>
@@ -55,7 +59,7 @@ export default function LoginForm() {
           onChange={(e) => setPassword(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && signIn()}
           autoComplete="current-password"
-          className="mt-1 w-full rounded border border-hairline bg-white px-3 py-2
+          className="mt-1 w-full rounded-card border border-hairline bg-surface shadow-card px-3 py-2
                      outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
         />
       </label>
