@@ -40,6 +40,14 @@ export default async function ActivityPage() {
 
   const { data: clinicRows } = await supabase.from("clinics").select("id, name").order("name");
 
+  // Who has actually opened the app. NULL last_sign_in_at means never.
+  const { data: loginRows } = canSee
+    ? await supabase
+        .from("login_activity")
+        .select("id, full_name, email, role, is_active, last_sign_in_at")
+        .order("last_sign_in_at", { ascending: false, nullsFirst: false })
+    : { data: [] };
+
   return (
     <>
       <AppHeader profile={profile} />
@@ -54,6 +62,7 @@ export default async function ActivityPage() {
             entries={(logRows ?? []) as never}
             batches={(batchRows ?? []) as never}
             clinics={(clinicRows ?? []) as { id: number; name: string }[]}
+            logins={(loginRows ?? []) as never}
           />
         )}
       </main>

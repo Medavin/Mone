@@ -16,6 +16,15 @@ type Entry = {
   at: string;
 };
 
+type Login = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  role: string;
+  is_active: boolean;
+  last_sign_in_at: string | null;
+};
+
 type Batch = {
   id: number;
   source_name: string | null;
@@ -41,15 +50,17 @@ export default function ActivityClient({
   entries,
   batches,
   clinics,
+  logins = [],
 }: {
   entries: Entry[];
   batches: Batch[];
   clinics: { id: number; name: string }[];
+  logins?: Login[];
 }) {
   const router = useRouter();
   const supabase = createClient();
 
-  const [tab, setTab] = useState<"imports" | "log">("imports");
+  const [tab, setTab] = useState<"imports" | "log" | "logins">("imports");
   const [q, setQ] = useState("");
   const [action, setAction] = useState("");
   const [busy, setBusy] = useState<number | null>(null);
@@ -57,6 +68,7 @@ export default function ActivityClient({
   const [confirming, setConfirming] = useState<number | null>(null);
 
   const clinicName = useMemo(() => new Map(clinics.map((c) => [c.id, c.name])), [clinics]);
+  const never = useMemo(() => logins.filter((l) => !l.last_sign_in_at && l.is_active), [logins]);
 
   const actions = useMemo(
     () => Array.from(new Set(entries.map((e) => e.action))).sort(),
@@ -112,6 +124,7 @@ export default function ActivityClient({
         {([
           ["imports", `Imports (${batches.length})`],
           ["log", `Change log (${entries.length})`],
+          ["logins", `Who has signed in (${logins.filter((l) => l.last_sign_in_at).length}/${logins.length})`],
         ] as const).map(([k, label]) => (
           <button
             key={k}
@@ -215,6 +228,100 @@ export default function ActivityClient({
 
           {batches.length === 0 && (
             <p className="mt-6 text-sm text-muted">Nothing has been imported yet.</p>
+          )}
+        </section>
+      )}
+
+      {tab === "logins" && (
+        <section className="mt-4">
+          {never.length > 0 && (
+            <p className="rounded-card border border-warn/30 bg-warn/5 px-4 py-3 text-sm text-warn">
+              {never.length === 1
+                ? `${never[0].full_name ?? never[0].email} has never signed in.`
+                : `${never.length} people have never signed in: ${never
+                    .map((l) => l.full_name ?? l.email)
+                    .join(", ")}.`}
+            </p>
+          )}
+
+          <div className="mt-4 flex flex-wrap items-center gap-2 print:hidden">
+            <span className="text-xs text-muted">
+              A login that has never been used usually means the password did not arrive, rather
+              than that somebody chose not to look.
+            </span>
+            <span className="flex-1" />
+            <TableControls
+              title="Who has signed in"
+              rows={logins}
+              columns={[
+                { header: "Name", value: (l) => l.full_name ?? "" },
+                { header: "Email", value: (l) => l.email ?? "" },
+                { header: "Role", value: (l) => l.role },
+                { header: "Active", value: (l) => (l.is_active ? "yes" : "no") },
+                { header: "Last signed in", value: (l) => l.last_sign_in_at ?? "never" },
+                {
+                  header: "Days since",
+                  value: (l) =>
+                    l.last_sign_in_at
+                      ? Math.floor(
+                          (Date.now() - new Date(l.last_sign_in_at).getTime()) / 86400000
+                        )
+                      : "",
+                },
+              ]}
+            />
+          </div>
+
+          <table className="mt-3 w-full text-sm">
+            <thead>
+              <tr className="border-b border-hairline">
+                <th className={thL}>Person</th>
+                <th className={thL}>Role</th>
+                <th className={thL}>Last signed in</th>
+                <th className={thL} />
+              </tr>
+            </thead>
+            <tbody>
+              {logins.map((l) => {
+                const days = l.last_sign_in_at
+                  ? Math.floor((Date.now() - new Date(l.last_sign_in_at).getTime()) / 86400000)
+                  : null;
+                return (
+                  <tr key={l.id} className="border-b border-hairline/60">
+                    <td className="py-2">
+                      {l.full_name ?? "—"}
+                      <div className="text-xs text-muted">{l.email}</div>
+                    </td>
+                    <td className="py-2 text-xs">{l.role}</td>
+                    <td className="py-2">
+                      {l.last_sign_in_at ? (
+                        <>
+                          {when(l.last_sign_in_at)}
+                          <div className="text-xs text-muted">
+                            {days === 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`}
+                          </div>
+                        </>
+                      ) : (
+                        <span className="text-warn">never</span>
+                      )}
+                    </td>
+                    <td className="py-2 text-right text-xs">
+                      {!l.is_active && <span className="text-muted">no longer active</span>}
+                      {l.is_active && days !== null && days > 14 && (
+                        <span className="text-muted">quiet for a while</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          {logins.length === 0 && (
+            <p className="mt-6 text-sm text-muted">
+              No logins to show. If you expected some, migration 023 may not have run — this list
+              comes from a view added by it.
+            </p>
           )}
         </section>
       )}
