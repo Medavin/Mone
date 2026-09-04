@@ -8,7 +8,7 @@
  * rows shows a number that is simply too small, with nothing on screen to
  * say so. That is the worst kind of bug in this app: plausible and wrong.
  *
- * MOne is already past that line — one clinic's activity_monthly is 1,214
+ * MBOne is already past that line — one clinic's activity_monthly is 1,214
  * rows, and that is with a single clinic loaded out of 38.
  *
  * Pass a builder that takes a row range and returns the query. The loop

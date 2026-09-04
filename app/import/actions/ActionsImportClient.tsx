@@ -397,7 +397,7 @@ export default function ActionsImportClient({
             <p className="mt-2 text-sm text-muted">
               {parsed.actionTotals.length} distinct actions after collapsing the spellings.
               {unresolvedActions.length > 0
-                ? ` ${unresolvedActions.length} need a match — the report has a phrase MOne has not seen before.`
+                ? ` ${unresolvedActions.length} need a match — the report has a phrase MBOne has not seen before.`
                 : " All of them are already recognised."}
             </p>
 

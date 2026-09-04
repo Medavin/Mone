@@ -1,4 +1,4 @@
-# CLAUDE.md — MOne
+# CLAUDE.md — MBOne
 
 Standing instructions for this project. Read this fully before doing anything.
 
@@ -28,7 +28,7 @@ This changes how to help him:
 
 ---
 
-## What MOne is
+## What MBOne is
 
 A web app for **Momentum**, a US organisation managing 38 physical therapy clinics with nine
 Client Account Managers (CAMs). Medavin does their AR work.

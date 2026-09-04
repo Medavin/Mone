@@ -12,7 +12,7 @@ export default function LoginPage() {
             alt="Momentum Billing"
             className="h-9 w-auto"
           />
-          <h1 className="mt-5 text-3xl font-semibold tracking-tight">MOne</h1>
+          <h1 className="mt-5 text-3xl font-semibold tracking-tight">MBOne</h1>
           <p className="mt-2 text-base font-medium">{APP_TAGLINE}</p>
           <p className="mt-1 text-sm text-muted">{APP_SUBLINE}</p>
         </div>

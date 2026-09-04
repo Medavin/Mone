@@ -40,7 +40,7 @@ export default async function AppHeader({ profile }: { profile: Profile | null }
               className="h-7 w-auto sm:hidden"
             />
             <span className="h-5 w-px bg-hairline" aria-hidden="true" />
-            <span className="text-lg font-semibold tracking-tight">MOne</span>
+            <span className="text-lg font-semibold tracking-tight">MBOne</span>
           </div>
 
           <div className="flex items-center gap-4">

@@ -1,4 +1,4 @@
-# MOne
+# MBOne
 
 AR platform for Momentum. Next.js 14 + Supabase.
 

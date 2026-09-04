@@ -409,7 +409,7 @@ ${insights
 </section>
 
 <footer>
-  Generated from MOne on ${new Date().toLocaleDateString("en-US", {
+  Generated from MBOne on ${new Date().toLocaleDateString("en-US", {
     day: "numeric",
     month: "long",
     year: "numeric",
