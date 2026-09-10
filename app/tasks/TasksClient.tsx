@@ -11,6 +11,9 @@ export type Task = {
   title: string;
   detail: string | null;
   clinic_id: number | null;
+  subject: string | null;
+  last_response_at: string | null;
+  response_count: number;
   flag_id: number | null;
   assigned_to: string | null;
   assigned_team: string | null;
@@ -75,6 +78,7 @@ export default function TasksClient({
     title: "",
     detail: "",
     clinic_id: "",
+    subject: "",
     assigned_to: "",
     assigned_team: "",
     due_on: "",
@@ -82,6 +86,35 @@ export default function TasksClient({
   });
 
   const [flag, setFlag] = useState({ clinic_id: "", reason: "", detail: "", severity: "watch" });
+  const [reply, setReply] = useState<Record<number, string>>({});
+
+  /**
+   * Replying is what clears a task from the "no response" list — not opening
+   * it. Michelle was explicit about that, so this is the only thing that
+   * satisfies the rule.
+   */
+  async function respond(taskId: number, assignedTo: string | null, createdBy: string | null) {
+    const body = (reply[taskId] ?? "").trim();
+    if (!body) return;
+    const ok = await run("Replying", () =>
+      supabase.from("task_responses").insert({ task_id: taskId, author_id: me, body })
+    );
+    if (!ok) return;
+    setReply({ ...reply, [taskId]: "" });
+
+    // Tell the other party — whichever end of it you are.
+    const other = me === assignedTo ? createdBy : assignedTo;
+    if (other && other !== me) {
+      await notifyUser(supabase, {
+        to: other,
+        kind: "task_assigned",
+        title: "Reply on a task",
+        body: body.slice(0, 120),
+        link: "/tasks",
+        actorName: nameOf.get(me) ?? undefined,
+      });
+    }
+  }
 
   const nameOf = new Map(people.map((p) => [p.id, p.full_name]));
   const clinicOf = new Map(clinics.map((c) => [c.id, c.name]));
@@ -106,6 +139,9 @@ export default function TasksClient({
         title: task.title.trim(),
         detail: task.detail.trim() || null,
         clinic_id: task.clinic_id ? Number(task.clinic_id) : null,
+        // One or the other, never both — two answers to "what is this about"
+        // means two reports that disagree. The database enforces it too.
+        subject: task.clinic_id ? null : task.subject.trim() || null,
         assigned_to: task.assigned_to || null,
         assigned_team: task.assigned_team.trim() || null,
         due_on: task.due_on || null,
@@ -129,6 +165,7 @@ export default function TasksClient({
         title: "",
         detail: "",
         clinic_id: "",
+        subject: "",
         assigned_to: "",
         assigned_team: "",
         due_on: "",
@@ -288,16 +325,31 @@ export default function TasksClient({
                 </datalist>
                 <select
                   value={task.clinic_id}
-                  onChange={(e) => setTask({ ...task, clinic_id: e.target.value })}
+                  onChange={(e) =>
+                    // Choosing a clinic clears the free-text subject, since a
+                    // task is about one thing or the other.
+                    setTask({ ...task, clinic_id: e.target.value, subject: "" })
+                  }
                   className={field}
                 >
-                  <option value="">No clinic</option>
+                  <option value="">Not about a clinic</option>
                   {clinics.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
                     </option>
                   ))}
                 </select>
+                {/* Michelle asked for a client or clinic field that stays
+                    optional and editable, so a task about something else can
+                    still say what it is about. */}
+                {!task.clinic_id && (
+                  <input
+                    value={task.subject}
+                    onChange={(e) => setTask({ ...task, subject: e.target.value })}
+                    placeholder="Or what it is about — a payer, a project, IT…"
+                    className={field}
+                  />
+                )}
                 <input
                   type="date"
                   value={task.due_on}
@@ -380,15 +432,28 @@ export default function TasksClient({
                                 {clinicOf.get(t.clinic_id)}
                               </Link>
                             )}
+                            {t.subject && <span>{t.subject}</span>}
+                            {/* To and From spelled out, as Michelle asked —
+                                an arrow assumes the reader knows which end
+                                they are looking at. */}
                             <span>
+                              <span className="text-muted">To</span>{" "}
                               {t.assigned_to
-                                ? `→ ${nameOf.get(t.assigned_to) ?? "someone"}`
-                                : t.assigned_team
-                                  ? `→ ${t.assigned_team}`
-                                  : "unassigned"}
+                                ? nameOf.get(t.assigned_to) ?? "someone"
+                                : t.assigned_team || "nobody yet"}
                             </span>
-                            {t.created_by && t.created_by !== me && (
-                              <span>from {nameOf.get(t.created_by) ?? "someone"}</span>
+                            {t.created_by && (
+                              <span>
+                                <span className="text-muted">From</span>{" "}
+                                {t.created_by === me ? "you" : nameOf.get(t.created_by) ?? "someone"}
+                              </span>
+                            )}
+                            {t.response_count > 0 ? (
+                              <span className="text-good">
+                                {t.response_count} {t.response_count === 1 ? "reply" : "replies"}
+                              </span>
+                            ) : (
+                              <span className="text-warn">no reply yet</span>
                             )}
                             {t.due_on && (
                               <span className={overdue ? "font-medium text-bad" : ""}>
@@ -410,6 +475,35 @@ export default function TasksClient({
                           ))}
                         </select>
                       </div>
+
+                      {/* Replying is what answers a task. Only shown to the two
+                          people it concerns — a task with everybody replying is
+                          a thread, not a task. */}
+                      {(t.assigned_to === me || t.created_by === me) &&
+                        !["done", "cancelled"].includes(t.status) && (
+                          <div className="mt-2 flex gap-2">
+                            <input
+                              value={reply[t.id] ?? ""}
+                              onChange={(e) => setReply({ ...reply, [t.id]: e.target.value })}
+                              onKeyDown={(e) =>
+                                e.key === "Enter" && respond(t.id, t.assigned_to, t.created_by)
+                              }
+                              placeholder={
+                                t.response_count > 0
+                                  ? "Add a reply…"
+                                  : "Reply — this is what clears it from the no-response list"
+                              }
+                              className="flex-1 rounded border border-hairline px-2 py-1 text-sm outline-none focus:border-accent"
+                            />
+                            <button
+                              onClick={() => respond(t.id, t.assigned_to, t.created_by)}
+                              disabled={busy || !(reply[t.id] ?? "").trim()}
+                              className="rounded border border-hairline px-3 py-1 text-xs text-muted hover:text-ink disabled:opacity-40"
+                            >
+                              Reply
+                            </button>
+                          </div>
+                        )}
                     </div>
                   );
                 })}

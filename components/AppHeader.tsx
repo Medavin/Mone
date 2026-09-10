@@ -5,6 +5,8 @@ import NavLinks from "./NavLinks";
 import FloatingChat from "./FloatingChat";
 import NotificationBell from "./NotificationBell";
 
+const SHOW_FLOATING_CHAT = false;
+
 /**
  * Two rows on purpose. Eleven modules cannot share one line with the clock,
  * the signed-in name and a sign-out button without everything shrinking to
@@ -72,7 +74,13 @@ export default async function AppHeader({ profile }: { profile: Profile | null }
           and a backdrop-filter makes that element the containing block for any
           fixed-position descendant — a bubble inside it would be trapped in the
           header strip. */}
-      {profile && <FloatingChat userId={profile.id} />}
+      {/* The floating chat bubble is off at Michelle's request — Momentum
+          use Teams. Kept in the codebase rather than deleted. */}
+      {/* Chat is switched off at Michelle's request — Momentum use Teams and
+          Egnyte. The component and its routes stay in the codebase rather
+          than being deleted, in case a client-facing thread is wanted later.
+          Flip this to true to bring it back. */}
+      {SHOW_FLOATING_CHAT && profile !== null && <FloatingChat userId={profile.id} />}
     </>
   );
 }

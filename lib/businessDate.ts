@@ -70,3 +70,50 @@ export function minutesBetween(fromIso: string, toIso?: string | null): number {
   const end = toIso ? new Date(toIso).getTime() : Date.now();
   return Math.max(0, Math.round((end - start) / 60000));
 }
+
+/**
+ * The business date N business days before a given one, skipping weekends.
+ *
+ * Company holidays are NOT skipped here — the holiday list lives in the
+ * database and this file is deliberately free of it, so that the date
+ * arithmetic stays pure and testable. Anything needing holidays should
+ * subtract them itself.
+ */
+export function businessDaysBefore(iso: string, days: number): string {
+  const d = new Date(`${iso}T12:00:00Z`);
+  let left = days;
+  while (left > 0) {
+    d.setUTCDate(d.getUTCDate() - 1);
+    const dow = d.getUTCDay();
+    if (dow !== 0 && dow !== 6) left--;
+  }
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Whether a task has gone unanswered past its allowance.
+ *
+ * ⚠ MICHELLE'S RULE, EXACTLY, 4 September 2026: overdue means no response
+ * AND not marked completed. OPENING IT DOES NOT COUNT and has no effect.
+ *
+ * That is why there is no "seen" concept anywhere in this — treating a read
+ * as acknowledgement lets somebody open a task daily for a week while
+ * nothing happens, which is the failure this alert exists to catch.
+ */
+export function taskIsUnanswered(
+  task: {
+    status: string;
+    created_at: string;
+    last_response_at: string | null;
+    completed_at: string | null;
+  },
+  allowanceDays = 1
+): boolean {
+  if (task.completed_at) return false;
+  if (task.status === "done" || task.status === "cancelled") return false;
+  if (task.last_response_at) return false;
+
+  const raisedOn = businessDateOf(new Date(task.created_at));
+  const dueBy = businessDaysBefore(businessToday(), allowanceDays);
+  return raisedOn <= dueBy;
+}

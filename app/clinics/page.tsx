@@ -3,6 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import AppHeader from "@/components/AppHeader";
 import ExportButtons from "@/components/ExportButtons";
 import { fetchAllRows } from "@/lib/fetchAll";
+import {
+  DAYS_IN_AR_METHOD,
+  PAYMENT_PER_VISIT_METHOD,
+  daysInAr,
+  paymentPerVisit,
+  slippage,
+} from "@/lib/arMetrics";
 import type { Clinic, Profile } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -65,6 +72,8 @@ export default async function ClinicsPage({
     period_month: string;
     closing_ar: number | null;
     bucket_120_plus: number | null;
+    bucket_current: number | null;
+    bucket_30: number | null;
   };
 
   let ar: ArRow[] = [];
@@ -73,7 +82,7 @@ export default async function ClinicsPage({
     const res = await fetchAllRows<ArRow>((lo, hi) =>
       supabase
         .from("ar_clinic_month")
-        .select("clinic_id, period_month, closing_ar, bucket_120_plus")
+        .select("clinic_id, period_month, closing_ar, bucket_120_plus, bucket_current, bucket_30")
         .in("period_month", months)
         .order("period_month")
         .order("clinic_id")
@@ -84,6 +93,32 @@ export default async function ClinicsPage({
 
   const at = (clinicId: number, month?: string) =>
     month ? ar.find((r) => r.clinic_id === clinicId && r.period_month.slice(0, 7) === month) : undefined;
+
+  // Three months of activity, which is the charge base for days in A/R and
+  // the source of payments and visits for the per-visit figure.
+  const activityMonths = arMonths.slice(-3);
+  type ActRow = {
+    clinic_id: number;
+    period_month: string;
+    charges: number | null;
+    payments: number | null;
+    visits: number | null;
+  };
+
+  let activity: ActRow[] = [];
+  if (activityMonths.length) {
+    const res = await fetchAllRows<ActRow>((lo, hi) =>
+      supabase
+        .from("activity_clinic_month")
+        .select("clinic_id, period_month, charges, payments, visits")
+        .gte("period_month", `${activityMonths[0]}-01`)
+        .lte("period_month", `${activityMonths[activityMonths.length - 1]}-01`)
+        .order("period_month")
+        .order("clinic_id")
+        .range(lo, hi)
+    );
+    activity = res.rows;
+  }
 
   // Open flags, so a card can say a clinic has already been raised.
   const { data: flagRows } = await supabase
@@ -103,12 +138,18 @@ export default async function ClinicsPage({
     const over120 = now?.bucket_120_plus ?? null;
     const before = was?.closing_ar ?? null;
     const flags = flagsByClinic.get(c.id) ?? [];
+    const mine = activity.filter((a) => a.clinic_id === c.id);
+    const thisMonth = mine.find((a) => a.period_month.slice(0, 7) === latest);
+
     return {
       ...c,
       total,
       over120,
       share: total && over120 !== null ? (over120 / total) * 100 : null,
       change: total !== null && before ? ((total - before) / before) * 100 : null,
+      days: daysInAr(total, mine),
+      perVisit: paymentPerVisit(thisMonth),
+      slip: slippage(now, was),
       flags,
       worst: flags.includes("urgent") ? "urgent" : flags.includes("concern") ? "concern" : flags[0],
     };
@@ -153,7 +194,10 @@ export default async function ClinicsPage({
           </div>
           <ExportButtons
             title="Clinics"
-            headers={["Clinic", "Code", "Status", "Closing A/R", "Over 120", "120+ share %", "Change vs prior %"]}
+            headers={[
+              "Clinic", "Code", "Status", "Closing A/R", "Over 120", "120+ share %",
+              "Change vs prior %", "Days in A/R", "Payment per visit", "Moved Current to 30",
+            ]}
             rows={visible.map((c) => [
               c.name,
               c.code ?? "",
@@ -162,6 +206,9 @@ export default async function ClinicsPage({
               c.over120,
               c.share === null ? null : Math.round(c.share * 10) / 10,
               c.change === null ? null : Math.round(c.change * 10) / 10,
+              c.days,
+              c.perVisit,
+              c.slip?.moved ?? 0,
             ])}
           />
         </div>
@@ -272,6 +319,42 @@ export default async function ClinicsPage({
                         </span>
                       </div>
                     </div>
+
+                    {/* The two figures Michelle asked for, plus the slippage
+                        warning. Each says what it is rather than assuming
+                        the reader shares our definition. */}
+                    <div className="mt-4 grid grid-cols-2 gap-2 border-t border-hairline pt-3">
+                      <div>
+                        <div className="eyebrow">Days in A/R</div>
+                        <div className="tnum mt-0.5 text-sm font-medium" title={DAYS_IN_AR_METHOD}>
+                          {c.days === null ? (
+                            <span className="text-muted">not enough history</span>
+                          ) : (
+                            `${c.days} days`
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="eyebrow">Payment per visit</div>
+                        <div
+                          className="tnum mt-0.5 text-sm font-medium"
+                          title={PAYMENT_PER_VISIT_METHOD}
+                        >
+                          {c.perVisit === null ? (
+                            <span className="text-muted">no visits</span>
+                          ) : (
+                            `$${c.perVisit.toFixed(2)}`
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {c.slip && c.slip.moved > 0 && (
+                      <div className="mt-2 rounded bg-age60/10 px-2 py-1.5 text-xs text-age60">
+                        About {money(c.slip.moved)} moved out of Current into 30 days since{" "}
+                        {prior ? monthLabel(prior) : "last month"}.
+                      </div>
+                    )}
                   </>
                 )}
               </Link>
@@ -279,11 +362,24 @@ export default async function ClinicsPage({
           </div>
         )}
 
-        <p className="mt-8 text-xs text-muted">
-          A rise in A/R is shown in red and a fall in green, because on this page the figure is money
-          still owed — not revenue. Green is not always good elsewhere in the app, so the direction
-          is labelled rather than left to the colour.
-        </p>
+        <div className="mt-8 space-y-1 text-xs text-muted">
+          <p>
+            A rise in A/R is shown in red and a fall in green, because on this page the figure is
+            money still owed — not revenue. Green is not always good elsewhere in the app, so the
+            direction is labelled rather than left to the colour.
+          </p>
+          <p>
+            <strong>Days in A/R</strong> is {DAYS_IN_AR_METHOD}. <strong>Payment per visit</strong> is{" "}
+            {PAYMENT_PER_VISIT_METHOD}. Both are stated here because a measure whose definition is
+            invisible is one two people will read differently and both believe — and both are
+            provisional until Momentum confirms how it calculates them.
+          </p>
+          <p>
+            Movement out of Current into 30 days is shown only where Current fell{" "}
+            <em>and</em> 30 rose; either on its own is explained by the size of the month. It is
+            month against month today, and becomes weekly once the AdvancedMD feed is connected.
+          </p>
+        </div>
       </main>
     </>
   );

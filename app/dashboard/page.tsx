@@ -6,7 +6,7 @@ import ExportButtons from "@/components/ExportButtons";
 import Missing from "@/components/Missing";
 import type { Profile } from "@/lib/types";
 import { manages } from "@/lib/types";
-import { businessToday } from "@/lib/businessDate";
+import { businessToday, taskIsUnanswered } from "@/lib/businessDate";
 import RegionClocks from "@/components/RegionClocks";
 import DashboardFilters from "./DashboardFilters";
 import { regionsFromLabels } from "@/lib/regions";
@@ -194,7 +194,9 @@ export default async function DashboardPage({
   const arLatest = arMonths[arMonths.length - 1];
   const arPrior = arMonths[arMonths.length - 2];
 
-  const arByMonth = new Map<string, { total: number; over120: number }>();
+  // `current` and `d30` are carried so the panel can show money leaving
+  // Current — the early warning Michelle asked for.
+  const arByMonth = new Map<string, { total: number; over120: number; current: number; d30: number }>();
   const arByClinicLatest = new Map<number, { total: number; over120: number }>();
 
   if (arLatest && scopeIds.length) {
@@ -204,11 +206,13 @@ export default async function DashboardPage({
       clinic_id: number;
       period_month: string;
       closing_ar: number | null;
+      bucket_current: number | null;
+      bucket_30: number | null;
       bucket_120_plus: number | null;
     }>((lo, hi) =>
       supabase
         .from("ar_clinic_month")
-        .select("clinic_id, period_month, closing_ar, bucket_120_plus")
+        .select("clinic_id, period_month, closing_ar, bucket_current, bucket_30, bucket_120_plus")
         .in("clinic_id", scopeIds)
         .in("period_month", twoMonths)
         .order("period_month")
@@ -218,9 +222,11 @@ export default async function DashboardPage({
 
     for (const r of arRows) {
       const m = r.period_month.slice(0, 7);
-      const a = arByMonth.get(m) ?? { total: 0, over120: 0 };
+      const a = arByMonth.get(m) ?? { total: 0, over120: 0, current: 0, d30: 0 };
       a.total += r.closing_ar ?? 0;
       a.over120 += r.bucket_120_plus ?? 0;
+      a.current += r.bucket_current ?? 0;
+      a.d30 += r.bucket_30 ?? 0;
       arByMonth.set(m, a);
 
       if (m === arLatest) {
@@ -331,9 +337,17 @@ export default async function DashboardPage({
   // ---- tasks and flags ---------------------------------------------------
   const todayIso = new Date().toISOString().slice(0, 10);
   const [{ data: taskRows }, { data: flagRows }] = await Promise.all([
-    supabase.from("tasks").select("assigned_to, created_by, due_on, status"),
+    supabase.from("tasks").select("id, title, assigned_to, created_by, due_on, status, created_at, completed_at, last_response_at"),
     supabase.from("clinic_flags").select("id").eq("status", "open"),
   ]);
+  const { data: rosterRows } = await supabase
+    .from("profiles")
+    .select("id, full_name")
+    .eq("is_active", true);
+  const nameOf = new Map(
+    ((rosterRows ?? []) as { id: string; full_name: string }[]).map((p) => [p.id, p.full_name])
+  );
+
   const openTasks = (taskRows ?? []).filter(
     (t) => !["done", "cancelled"].includes(t.status as string)
   );
@@ -341,6 +355,20 @@ export default async function DashboardPage({
   const outwardOpen = openTasks.filter(
     (t) => t.created_by === profile?.id && t.assigned_to !== profile?.id
   ).length;
+  /**
+   * Michelle's rule: a task with no response and not marked completed, one
+   * full business day after it was raised. Opening it counts for nothing.
+   */
+  const unanswered = ((taskRows ?? []) as unknown as {
+    id: number;
+    title: string;
+    assigned_to: string | null;
+    status: string;
+    created_at: string;
+    completed_at: string | null;
+    last_response_at: string | null;
+  }[]).filter((t) => taskIsUnanswered(t));
+
   const overdueCount = openTasks.filter(
     (t) => t.due_on && (t.due_on as string) < todayIso
   ).length;
@@ -536,12 +564,23 @@ export default async function DashboardPage({
             </Panel>
 
             {/* 4 — tasks */}
-            <Panel id="tasks" title="Tasks and reminders">
+            <Panel
+              id="tasks"
+              title="Tasks and reminders"
+              right={
+                unanswered.length > 0 ? (
+                  <span className="text-xs text-warn">
+                    {unanswered.length} with no response
+                  </span>
+                ) : undefined
+              }
+            >
               <div className="grid gap-3 sm:grid-cols-4">
                 {[
                   ["Inward", inwardOpen, "assigned to you"],
                   ["Outward", outwardOpen, "you assigned"],
                   ["Overdue", overdueCount, "past their date"],
+                  ["No response", unanswered.length, "a full business day"],
                   ["Flagged clinics", openFlagCount, "needing attention"],
                 ].map(([label, value, note]) => (
                   <div key={label as string} className="rounded border border-hairline p-3">
@@ -557,6 +596,31 @@ export default async function DashboardPage({
                   </div>
                 ))}
               </div>
+              {unanswered.length > 0 && (
+                <div className="mt-4 rounded-card border border-warn/30 bg-warn/5 p-3">
+                  <div className="eyebrow text-warn">Nobody has answered these</div>
+                  <ul className="mt-1.5 space-y-1 text-sm">
+                    {unanswered.slice(0, 6).map((t) => (
+                      <li key={t.id} className="flex items-baseline justify-between gap-3">
+                        <span className="truncate">{t.title}</span>
+                        <span className="shrink-0 text-xs text-muted">
+                          {nameOf.get(t.assigned_to ?? "") ?? "unassigned"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  {unanswered.length > 6 && (
+                    <p className="mt-1.5 text-xs text-muted">
+                      and {unanswered.length - 6} more.
+                    </p>
+                  )}
+                  <p className="mt-2 text-xs text-muted">
+                    Raised more than a business day ago with no reply and not marked done. Opening a
+                    task does not count as answering it.
+                  </p>
+                </div>
+              )}
+
               <p className="mt-3 text-xs text-muted">
                 <Link href="/tasks" className="text-accent hover:underline">
                   Open tasks and flags
@@ -620,6 +684,53 @@ export default async function DashboardPage({
             </Panel>
 
             {/* 6 — 120+ */}
+            {/* Money leaving Current — the early warning Michelle asked for.
+                A claim slipping out of Current is visible weeks before it
+                becomes a denial, which is the whole point of watching it. */}
+            {arCur && arPrev && (
+              <Panel
+                id="ageing-shift"
+                title="Leaving Current"
+                subtitle={arPrior ? `against ${monthLabel(arPrior)}` : undefined}
+              >
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {[
+                    ["Current", arCur.current, arPrev.current, true],
+                    ["30 days", arCur.d30, arPrev.d30, false],
+                    ["Over 120", arCur.over120, arPrev.over120, false],
+                  ].map(([label, now, before, fallIsBad]) => {
+                    const n = now as number;
+                    const b = before as number;
+                    const move = b ? ((n - b) / b) * 100 : 0;
+                    const good = (fallIsBad as boolean) ? move >= 0 : move <= 0;
+                    return (
+                      <div key={label as string} className="rounded-card border border-hairline p-3">
+                        <div className={thL}>{label as string}</div>
+                        <div className="tnum mt-1 text-xl font-medium">{money(n)}</div>
+                        <div className={`tnum mt-0.5 text-xs ${good ? "text-good" : "text-bad"}`}>
+                          {move > 0 ? "▲" : move < 0 ? "▼" : ""} {Math.abs(move).toFixed(1)}%
+                          <span className="ml-2 text-muted">was {money(b)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <p className="mt-3 text-sm text-muted">
+                  {arCur.current < arPrev.current && arCur.d30 > arPrev.d30
+                    ? `${money(arPrev.current - arCur.current)} left Current while the 30-day bucket grew by ${money(arCur.d30 - arPrev.d30)}. Worth asking which clinics before it ages again.`
+                    : arCur.current > arPrev.current
+                      ? "Current grew, which is what you want — new charges are outpacing what is ageing out of it."
+                      : "Current and the 30-day bucket both moved in the same direction, so this is volume rather than ageing."}
+                </p>
+
+                <p className="mt-2 text-xs text-muted">
+                  Month against month, because the packs are monthly. Once the AdvancedMD feed is
+                  connected this becomes weekly, which is the cadence Momentum can supply.
+                </p>
+              </Panel>
+            )}
+
             <Panel
               id="over120"
               title="Over 120 days"

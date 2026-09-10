@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import AppHeader from "@/components/AppHeader";
@@ -112,23 +113,58 @@ export default async function ActionsPage({
   }
   const categories = Array.from(byCategory.entries()).sort((a, b) => b[1] - a[1]);
 
+  /**
+   * Michelle asked that each row open to show what made it up: an action
+   * expanding to the clinics behind it, a collector to the actions they
+   * take, a clinic to the actions worked there — each ranked highest to
+   * lowest. A total nobody can take apart is a total nobody trusts.
+   */
+  const breakdownFor = (view: string, key: number) => {
+    const m = new Map<number, number>();
+    for (const r of rows) {
+      if (view === "action" && r.action_type_id !== key) continue;
+      if (view === "collector" && r.collector_id !== key) continue;
+      if (view === "clinic" && r.clinic_id !== key) continue;
+
+      // An action breaks down by clinic; a collector and a clinic both
+      // break down by action, because that is the question each invites.
+      const inner = view === "action" ? r.clinic_id : r.action_type_id;
+      m.set(inner, (m.get(inner) ?? 0) + r.action_count);
+    }
+    return Array.from(m.entries())
+      .map(([id, n]) => ({
+        label:
+          view === "action"
+            ? clinicName.get(id) ?? "—"
+            : typeById.get(id)?.name ?? "—",
+        count: n,
+      }))
+      .sort((a, b) => b.count - a.count);
+  };
+
   const list =
     view === "action"
       ? byAction.map(([id, n]) => ({
+          key: id,
           label: typeById.get(id)?.name ?? "—",
           note: typeById.get(id)?.category ?? "",
           count: n,
+          inner: breakdownFor("action", id),
         }))
       : view === "collector"
         ? byCollector.map(([id, n]) => ({
+            key: id,
             label: collectorName.get(id) ?? "—",
             note: "",
             count: n,
+            inner: breakdownFor("collector", id),
           }))
         : byClinic.map(([id, n]) => ({
+            key: id,
             label: clinicName.get(id) ?? "—",
             note: "",
             count: n,
+            inner: breakdownFor("clinic", id),
           }));
 
   const biggest = list[0]?.count ?? 0;
@@ -291,32 +327,55 @@ export default async function ActionsPage({
                 </thead>
                 <tbody>
                   {list.map((r) => (
-                    <tr key={r.label} className="border-b border-hairline/60">
-                      <td className="py-2 pr-4">
-                        {r.label}
-                        {r.note && <span className="ml-2 text-xs text-muted">{r.note}</span>}
-                      </td>
-                      <td className="tnum py-2 text-right">{plain(r.count)}</td>
-                      <td className="tnum py-2 text-right text-muted">
-                        {total ? ((r.count / total) * 100).toFixed(1) : 0}%
-                      </td>
-                      <td className="w-1/3 py-2 pl-4">
-                        <div className="h-2 rounded bg-canvas">
-                          <div
-                            className="h-2 rounded bg-accent/60"
-                            style={{ width: `${biggest ? (r.count / biggest) * 100 : 0}%` }}
-                          />
-                        </div>
-                      </td>
-                    </tr>
+                    <Fragment key={r.key}>
+                      <tr className="border-b border-hairline/60">
+                        <td className="py-2 pr-4">
+                          <details>
+                            <summary className="cursor-pointer list-none">
+                              <span className="text-accent">▸</span> {r.label}
+                              {r.note && <span className="ml-2 text-xs text-muted">{r.note}</span>}
+                              <span className="ml-2 text-xs text-muted">
+                                {r.inner.length} {view === "action" ? "clinics" : "actions"}
+                              </span>
+                            </summary>
+                            <ul className="mt-2 space-y-1 border-l-2 border-hairline pl-3">
+                              {r.inner.map((b) => (
+                                <li key={b.label} className="flex items-baseline gap-2 text-xs">
+                                  <span className="flex-1 text-muted">{b.label}</span>
+                                  <span className="tnum">{plain(b.count)}</span>
+                                  <span className="tnum w-12 text-right text-muted">
+                                    {r.count ? ((b.count / r.count) * 100).toFixed(0) : 0}%
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        </td>
+                        <td className="tnum py-2 text-right align-top">{plain(r.count)}</td>
+                        <td className="tnum py-2 text-right align-top text-muted">
+                          {total ? ((r.count / total) * 100).toFixed(1) : 0}%
+                        </td>
+                        <td className="w-1/3 py-2 pl-4 align-top">
+                          <div className="h-2 rounded bg-canvas">
+                            <div
+                              className="h-2 rounded bg-accent/60"
+                              style={{ width: `${biggest ? (r.count / biggest) * 100 : 0}%` }}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
 
               <p className="mt-3 text-xs text-muted">
-                Bars are relative to the largest row. Actions are counted against their
-                canonical name, not the phrase a collector typed — several spellings of the
-                same action are added together here rather than split apart.
+                <strong>Share</strong> means the share of all actions in this month — so a
+                collector&apos;s share is how much of the month&apos;s work they did, and a
+                clinic&apos;s is how much of it went to them. Open any row to see what made it up,
+                ranked highest to lowest. Bars are relative to the largest row. Actions are counted
+                against their canonical name, not the phrase a collector typed — several spellings
+                of one action are added together here rather than split apart.
               </p>
             </section>
           </>

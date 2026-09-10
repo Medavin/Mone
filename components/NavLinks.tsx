@@ -68,6 +68,9 @@ const GROUPS: Group[] = [
     items: [
       { href: "/clinics", label: "Clinics", hint: "A/R, aging and the month's figures" },
       { href: "/assignments", label: "Assignments", hint: "Who owns which work, per clinic" },
+      { href: "/crl", label: "CRL", hint: "Claims sent to a CAM or a collector" },
+      { href: "/denials", label: "Denials", hint: "By code, clinic, carrier and month" },
+      { href: "/payments", label: "Payments", hint: "Reported against applied" },
       { href: "/actions", label: "Collector actions", hint: "What was worked, and by whom" },
       { href: "/portals", label: "Insurance portals", hint: "Which portal, whose login" },
     ],
@@ -78,7 +81,11 @@ const GROUPS: Group[] = [
     colour: "#7A52C4",
     icon: ICONS.team,
     items: [
-      { href: "/team", label: "Chat", hint: "Channels and direct messages" },
+      // Chat removed at Michelle's request, 4 Sep 2026: "no file sharing in
+      // this and no chat lets keep to teams and egnyte." The routes and the
+      // code remain — a second place for messages is a place messages get
+      // missed, but nothing is deleted in case a client-facing thread is
+      // wanted later.
       { href: "/people", label: "Attendance", hint: "Who is working today" },
       { href: "/hours", label: "Hours", hint: "Time worked, and what is billable" },
       { href: "/calendar", label: "Calendar", hint: "Events, holidays and leave" },
@@ -93,7 +100,6 @@ const GROUPS: Group[] = [
     items: [
       { href: "/tasks", label: "Tasks & flags", hint: "What is owed, and by whom" },
       { href: "/notes", label: "Meeting notes", hint: "What was said, and agreed" },
-      { href: "/files", label: "Files", hint: "Shared documents" },
       { href: "/inventory", label: "Inventory", hint: "Equipment and stock, and who has it" },
     ],
   },
