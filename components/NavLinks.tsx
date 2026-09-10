@@ -113,6 +113,7 @@ const ADMIN_GROUP: Group = {
   icon: ICONS.settings,
   items: [
     { href: "/import", label: "Import a pack", hint: "The monthly AdvancedMD workbook" },
+    { href: "/import/data", label: "Import any report", hint: "Denials, CRL, payments, payers — map once" },
     { href: "/import/actions", label: "Import actions", hint: "The collection action report" },
     { href: "/admin", label: "Settings", hint: "Employees, clinics, mappings, billing rules" },
     { href: "/activity", label: "Activity & undo", hint: "What changed, and reversing an import" },
