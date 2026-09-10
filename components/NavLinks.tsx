@@ -68,6 +68,7 @@ const GROUPS: Group[] = [
     items: [
       { href: "/clinics", label: "Clinics", hint: "A/R, aging and the month's figures" },
       { href: "/assignments", label: "Assignments", hint: "Who owns which work, per clinic" },
+      { href: "/onboarding", label: "Client onboarding", hint: "New clients, and what is left to do" },
       { href: "/crl", label: "CRL", hint: "Claims sent to a CAM or a collector" },
       { href: "/denials", label: "Denials", hint: "By code, clinic, carrier and month" },
       { href: "/payments", label: "Payments", hint: "Reported against applied" },
