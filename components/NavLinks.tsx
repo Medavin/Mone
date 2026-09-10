@@ -66,6 +66,7 @@ const GROUPS: Group[] = [
     colour: "#3D5AB5",
     icon: ICONS.clinics,
     items: [
+      { href: "/packs", label: "Monthly packs", hint: "Generate the client workbook, any clinic, any period" },
       { href: "/clinics", label: "Clinics", hint: "A/R, aging and the month's figures" },
       { href: "/assignments", label: "Assignments", hint: "Who owns which work, per clinic" },
       { href: "/onboarding", label: "Client onboarding", hint: "New clients, and what is left to do" },
@@ -113,6 +114,7 @@ const ADMIN_GROUP: Group = {
   icon: ICONS.settings,
   items: [
     { href: "/import", label: "Import a pack", hint: "The monthly AdvancedMD workbook" },
+    { href: "/import/sources", label: "Data sources", hint: "ODBC, Snowflake and what to pull" },
     { href: "/import/data", label: "Import any report", hint: "Denials, CRL, payments, payers — map once" },
     { href: "/import/actions", label: "Import actions", hint: "The collection action report" },
     { href: "/admin", label: "Settings", hint: "Employees, clinics, mappings, billing rules" },

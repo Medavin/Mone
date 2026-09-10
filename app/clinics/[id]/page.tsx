@@ -394,6 +394,17 @@ const noRows = { data: [] as Row[] };
               ↓ Download report
             </a>
           )}
+
+          {/* The monthly pack — the workbook Momentum assembles by hand today. */}
+          {selected && (
+            <a
+              href={`/clinics/${clinicId}/pack?month=${selected}`}
+              className="rounded border border-accent px-3 py-1.5 text-sm text-accent hover:bg-accentSoft"
+              title="The nine-sheet workbook, generated from these figures"
+            >
+              ↓ Monthly pack (Excel)
+            </a>
+          )}
         </div>
 
         {!selected ? (
