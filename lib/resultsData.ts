@@ -82,12 +82,14 @@ export async function loadResults(supabase: SupabaseClient, p: Params) {
   const today = isoDay(new Date());
 
   // ---- reference lists --------------------------------------------------
-  const [clinicRes, assignRes, partyRes, peopleRes, monthRes, collRes, typeRes] = await Promise.all([
+  const [clinicRes, assignRes, partyRes, peopleRes, monthRes, arMonthRes, collRes, typeRes] = await Promise.all([
     supabase.from("clinics").select("*").order("name"),
     supabase.from("cam_assignments").select("id, clinic_id, cam_id, party_id, effective_from, effective_to"),
     supabase.from("work_parties").select("id, name, kind, profile_id, is_active").order("name"),
     supabase.from("profiles").select("id, full_name, role"),
     supabase.from("activity_month_list").select("period_month").order("period_month"),
+    // A/R months too: a Prompt client can have A/R before any visits figures arrive.
+    supabase.from("ar_month_list").select("period_month").order("period_month"),
     supabase.from("collectors").select("id, code, display_name"),
     supabase.from("action_types").select("id, name, category"),
   ]);
@@ -99,7 +101,9 @@ export async function loadResults(supabase: SupabaseClient, p: Params) {
     id: number; clinic_id: number; cam_id: string | null; party_id: number | null;
     effective_from: string; effective_to: string | null;
   }[];
-  const months = (monthRes.data ?? []).map((r) => (r.period_month as string).slice(0, 7));
+  const months = Array.from(new Set(
+    [...(monthRes.data ?? []), ...(arMonthRes.data ?? [])].map((r) => (r.period_month as string).slice(0, 7))
+  )).sort();
   const collName = new Map(((collRes.data ?? []) as { id: number; code: string; display_name: string | null }[])
     .map((c) => [c.id, c.display_name || c.code]));
   const actType = new Map(((typeRes.data ?? []) as { id: number; name: string; category: string | null }[]).map((a) => [a.id, a]));

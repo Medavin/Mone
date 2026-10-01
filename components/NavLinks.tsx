@@ -114,6 +114,7 @@ const ADMIN_GROUP: Group = {
   icon: ICONS.settings,
   items: [
     { href: "/import", label: "Import a pack", hint: "The monthly AdvancedMD workbook" },
+    { href: "/import/prompt", label: "Import Prompt report", hint: "A/R for the clients that bill in Prompt" },
     { href: "/import/sources", label: "Data sources", hint: "ODBC, Snowflake and what to pull" },
     { href: "/import/data", label: "Import any report", hint: "Denials, CRL, payments, payers — map once" },
     { href: "/import/actions", label: "Import actions", hint: "The collection action report" },
