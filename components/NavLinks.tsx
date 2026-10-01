@@ -66,7 +66,6 @@ const GROUPS: Group[] = [
     colour: "#3D5AB5",
     icon: ICONS.clinics,
     items: [
-      { href: "/results", label: "Client results", hint: "Every client by CAM: A/R health, CRL, denials, workload" },
       { href: "/packs", label: "Monthly packs", hint: "Generate the client workbook, any clinic, any period" },
       { href: "/clinics", label: "Clinics", hint: "A/R, aging and the month's figures" },
       { href: "/assignments", label: "Assignments", hint: "Who owns which work, per clinic" },
@@ -150,6 +149,7 @@ export default function NavLinks({ isAdmin }: { isAdmin: boolean }) {
   useEffect(() => setOpen(null), [pathname]);
 
   const onPortfolio = pathname === "/dashboard" || pathname.startsWith("/dashboard/");
+  const onResults = pathname === "/results" || pathname.startsWith("/results/");
   const inGroup = (g: Group) =>
     g.items.some((i) => pathname === i.href || pathname.startsWith(`${i.href}/`));
 
@@ -174,6 +174,34 @@ export default function NavLinks({ isAdmin }: { isAdmin: boolean }) {
           {ICONS.portfolio}
         </svg>
         <span className={onPortfolio ? "" : "transition group-hover:text-ink"}>Portfolio</span>
+      </Link>
+
+      {/* Michelle's Client & CAM Results page. A front page in its own right,
+          like Portfolio, so it sits at the top level rather than in a menu. */}
+      <Link
+        href="/results"
+        aria-current={onResults ? "page" : undefined}
+        className="group flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 transition"
+        style={
+          onResults
+            ? { background: "#0095D815", color: "#0095D8", fontWeight: 500 }
+            : { color: "#5C6B75" }
+        }
+        title="Every client by CAM: A/R health, CRL, denials, workload"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          className="h-[17px] w-[17px] shrink-0"
+          style={{ color: onResults ? "#0095D8" : "#0095D8B0" }}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          aria-hidden="true"
+        >
+          <path d="M4 20h16M7 16v-5M12 16V7M17 16v-8" />
+        </svg>
+        <span className={onResults ? "" : "transition group-hover:text-ink"}>Results</span>
       </Link>
 
       {groups.map((g) => {
