@@ -77,7 +77,11 @@ export default function PromptImportClient({
     // Let the "Reading…" line paint before the browser is busy for a few seconds.
     await new Promise((r) => setTimeout(r, 30));
     try {
-      const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+      // Dates are read as Excel day numbers, NOT as JavaScript dates. A
+      // JavaScript date is converted through this computer's time zone, and on
+      // India time every date came out a day early (2 Oct 2026). Day numbers
+      // are converted in UTC by the parsers, so they mean the same everywhere.
+      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
       if (isPromptCpt(wb)) {
         setCptWb(wb);
         return;

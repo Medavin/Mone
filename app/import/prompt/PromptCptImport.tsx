@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import type * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
+import { promptClassCode as classCode } from "@/lib/promptClass";
 import { parsePromptCpt, codesFor, facilityTotal } from "@/lib/parsePromptCpt";
 
 /**
@@ -16,7 +17,6 @@ type Clinic = { id: number; name: string; status: string; billing_system?: strin
 const key = (f: string) => `prompt:${f.trim().toLowerCase().replace(/\s+/g, " ")}`;
 const money = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 const int = (n: number) => Math.round(n).toLocaleString("en-US");
-const classCode = (t: string) => `PT-${t.toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "")}`.slice(0, 40);
 const monthName = (m: string) => new Date(`${m}-01T12:00:00`).toLocaleDateString("en-US", { month: "long", year: "numeric" });
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -73,6 +73,8 @@ export default function PromptCptImport({
       .select("id, code");
     if (fe) { setResult({ ok: false, message: `Could not save insurance types: ${fe.message}` }); setBusy(false); return; }
     const fcId = new Map((fcs ?? []).map((r) => [r.code as string, r.id as number]));
+    const { data: allPt } = await supabase.from("financial_classes").select("id").like("code", "PT-%");
+    const ptClassIds = (allPt ?? []).map((r) => r.id as number);
 
     for (const [cid, fs] of Array.from(groups.entries())) {
       for (const m of months) {
@@ -92,7 +94,10 @@ export default function PromptCptImport({
             });
           }
         }
-        let err: { message: string } | null = null;
+        // Replace, never add: clear this client-month's earlier Prompt rows first.
+        const { error: delErr } = await supabase.from("service_monthly").delete()
+          .eq("clinic_id", cid).eq("period_month", period).in("financial_class_id", ptClassIds);
+        let err: { message: string } | null = delErr;
         for (let i = 0; i < payload.length && !err; i += 400) {
           const { error } = await supabase.from("service_monthly")
             .upsert(payload.slice(i, i + 400), { onConflict: "clinic_id,period_month,financial_class_id,procedure_id" });
