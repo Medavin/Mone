@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Clinic } from "@/lib/types";
+import { BILLING_SYSTEMS } from "@/lib/types";
 import EmployeeManager, { type Employee } from "./EmployeeManager";
 import ClinicProfileEditor, { type ClinicFull, type ClinicPerson } from "./ClinicProfileEditor";
 
@@ -103,6 +104,10 @@ export default function AdminClient({
       setGoLive("");
       setNotes("");
     }
+  }
+
+  async function setBillingSystem(id: number, next: string) {
+    await run("Updating billing system", () => supabase.from("clinics").update({ billing_system: next }).eq("id", id));
   }
 
   async function setClinicStatus(id: number, next: string) {
@@ -285,6 +290,7 @@ export default function AdminClient({
                 <tr className="border-b border-hairline">
                   <th className={thL}>Clinic</th>
                   <th className={thL}>Status</th>
+                  <th className={thL}>Billing system</th>
                   <th className={thL}>Note</th>
                 </tr>
               </thead>
@@ -302,6 +308,18 @@ export default function AdminClient({
                           <option key={s} value={s}>
                             {s}
                           </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="py-2">
+                      <select
+                        value={c.billing_system ?? "advancedmd"}
+                        onChange={(e) => setBillingSystem(c.id, e.target.value)}
+                        className="rounded-card border border-hairline bg-surface shadow-card px-2 py-1 text-xs"
+                        title="Which system this client bills in. Prompt clients do not arrive in the AdvancedMD packs or feed."
+                      >
+                        {BILLING_SYSTEMS.map(([v, l]) => (
+                          <option key={v} value={v}>{l}</option>
                         ))}
                       </select>
                     </td>

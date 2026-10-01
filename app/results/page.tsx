@@ -106,7 +106,7 @@ function SourceLine({ text }: { text: string }) {
 export default async function ResultsPage({
   searchParams,
 }: {
-  searchParams: { from?: string; to?: string; cam?: string; client?: string };
+  searchParams: { from?: string; to?: string; cam?: string; client?: string; system?: string };
 }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -118,14 +118,16 @@ export default async function ResultsPage({
 
   // ---- reference lists --------------------------------------------------
   const [clinicRes, assignRes, partyRes, peopleRes, monthRes] = await Promise.all([
-    supabase.from("clinics").select("id, name, status").order("name"),
+    // "*" rather than a column list so the page keeps working before
+    // migration 031 adds billing_system.
+    supabase.from("clinics").select("*").order("name"),
     supabase.from("cam_assignments").select("id, clinic_id, cam_id, party_id, effective_from, effective_to"),
     supabase.from("work_parties").select("id, name, kind, profile_id, is_active").order("name"),
     supabase.from("profiles").select("id, full_name, role"),
     supabase.from("activity_month_list").select("period_month").order("period_month"),
   ]);
 
-  const clinics = (clinicRes.data ?? []) as { id: number; name: string; status: string }[];
+  const clinics = (clinicRes.data ?? []) as { id: number; name: string; status: string; billing_system?: string | null }[];
   const parties = (partyRes.data ?? []) as { id: number; name: string; kind: string; profile_id: string | null; is_active: boolean }[];
   const people = (peopleRes.data ?? []) as { id: string; full_name: string | null; role: string }[];
   const assignments = (assignRes.data ?? []) as {
@@ -163,7 +165,11 @@ export default async function ResultsPage({
   const today = new Date().toISOString().slice(0, 10);
 
   const active = clinics.filter((c) => c.status === "active");
-  const clientList = active.map((c) => ({ id: c.id, name: c.name, cam: camOn(c.id, asOfDay)?.name ?? null }));
+  const clientList = active.map((c) => ({
+    id: c.id, name: c.name, cam: camOn(c.id, asOfDay)?.name ?? null,
+    system: c.billing_system ?? "advancedmd",
+  }));
+  const systemsInUse = Array.from(new Set(clientList.map((c) => c.system))).sort();
   const camNames = Array.from(new Set(clientList.map((c) => c.cam).filter((x): x is string => !!x))).sort();
 
   const camFilter = searchParams.cam ?? "";
@@ -171,6 +177,10 @@ export default async function ResultsPage({
   let scope = clientList;
   if (camFilter === "__none") scope = scope.filter((c) => !c.cam);
   else if (camFilter) scope = scope.filter((c) => c.cam === camFilter);
+  // Billing system: Prompt clients do not arrive in the AdvancedMD packs or
+  // feed, so being able to look at them apart matters.
+  const systemFilter = searchParams.system ?? "";
+  if (systemFilter) scope = scope.filter((c) => c.system === systemFilter);
   if (clientFilter) scope = clientList.filter((c) => c.id === clientFilter);
   const scopeIds = scope.map((c) => c.id);
 
@@ -181,6 +191,9 @@ export default async function ResultsPage({
       : camFilter
         ? `${camFilter}'s ${scope.length} clients`
         : `all ${scope.length} active clients`;
+  const scopeLabelFull = systemFilter && !clientFilter
+    ? `${scopeLabel} on ${systemFilter === "prompt" ? "Prompt" : systemFilter === "advancedmd" ? "AdvancedMD" : "another system"}`
+    : scopeLabel;
 
   // ---- monthly facts: the period plus six months before it -------------
   // The extra months are the base for days in A/R and its trend; they are
@@ -240,7 +253,7 @@ export default async function ResultsPage({
   const historyOf = (id: number) => Array.from(facts.get(id)?.values() ?? []);
 
   type Row = {
-    id: number; name: string; cam: string | null; camAssignmentId: number | null;
+    id: number; name: string; cam: string | null; system: string; camAssignmentId: number | null;
     snap: Snapshot; trend: { month: string; days: number | null }[];
     sig: ReturnType<typeof signals>;
   };
@@ -250,7 +263,7 @@ export default async function ResultsPage({
     const trend = from && to ? daysTrend(h, shiftMonth(from, -3) < from ? shiftMonth(from, -3) : from, to) : [];
     const own = camOn(c.id, today);
     return {
-      id: c.id, name: c.name, cam: c.cam,
+      id: c.id, name: c.name, cam: c.cam, system: c.system,
       camAssignmentId: own?.current ? own.id : null,
       snap, trend, sig: signals(snap, trend),
     };
@@ -450,7 +463,11 @@ export default async function ResultsPage({
     ...(combined && withData.length > 1
       ? [{ key: "all", label: clientFilter ? "Selected" : camFilter ? "All of these" : "All clients", sub: `${withData.length} with figures`, snap: combined }]
       : []),
-    ...rows.map((r) => ({ key: String(r.id), label: r.name, sub: r.cam, snap: r.snap })),
+    ...rows.map((r) => ({
+      key: String(r.id), label: r.name,
+      sub: [r.cam, r.system === "prompt" ? "Prompt" : null].filter(Boolean).join(" · ") || null,
+      snap: r.snap,
+    })),
   ];
   const METRICS: { label: string; get: (s: Snapshot) => string; raw: (s: Snapshot) => number | null; neg?: boolean; flag?: (s: Snapshot) => boolean; note?: string }[] = [
     { label: "Visits", get: (s) => plain(s.visits), raw: (s) => s.visits },
@@ -485,7 +502,7 @@ export default async function ResultsPage({
         <div className="mb-1 text-xs font-medium uppercase tracking-wider text-accent">Operations</div>
         <h1 className="text-2xl font-semibold">Client &amp; CAM results</h1>
         <p className="mt-1 text-sm text-muted">
-          {scopeLabel} · {monthLabel(from)} to {monthLabel(to)}
+          {scopeLabelFull} · {monthLabel(from)} to {monthLabel(to)}
           {periodMonths.length ? ` (${periodMonths.length} month${periodMonths.length === 1 ? "" : "s"} of figures)` : ""}
         </p>
 
@@ -494,6 +511,7 @@ export default async function ResultsPage({
             <ResultsFilters
               months={months} from={from!} to={to!}
               cams={camNames} cam={camFilter}
+              systems={systemsInUse} system={systemFilter}
               clients={clientList} client={clientFilter}
             />
           ) : (
@@ -802,6 +820,11 @@ export default async function ResultsPage({
                         <Link href={`/results?${new URLSearchParams({ from: from ?? "", to: to ?? "", client: String(r.id) })}`} className="font-medium text-accent hover:underline">
                           {r.name}
                         </Link>
+                        {r.system === "prompt" && (
+                          <span className="ml-2 rounded-full bg-brand/10 px-1.5 py-0.5 text-[10px] font-medium text-brandMid" title="Bills in Prompt, not AdvancedMD">
+                            Prompt
+                          </span>
+                        )}
                         {r.snap.asOf && to && r.snap.asOf < to && (
                           <div className="text-[11px] text-warn">figures only to {monthLabel(r.snap.asOf)}</div>
                         )}
@@ -821,7 +844,11 @@ export default async function ResultsPage({
                       <td className="tnum px-2 py-2 text-right">{crlOpenBy.get(r.id) ?? 0}</td>
                       <td className="space-x-1 whitespace-nowrap px-2 py-2">
                         {r.snap.monthsWithData === 0 ? (
-                          <span className="text-xs text-muted">nothing imported</span>
+                          <span className="text-xs text-muted">
+                            {r.system === "prompt"
+                              ? "Prompt client — needs a Prompt export, not in the AdvancedMD packs"
+                              : "nothing imported"}
+                          </span>
                         ) : (
                           <>
                             <Chip s={r.sig.days} title={`Days in A/R against ${DAYS_IN_AR_TARGET}`}>

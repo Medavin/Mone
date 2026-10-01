@@ -18,6 +18,8 @@ export default function ResultsFilters({
   cam,
   clients,
   client,
+  systems,
+  system,
 }: {
   months: string[];
   from: string;
@@ -26,6 +28,8 @@ export default function ResultsFilters({
   cam: string;
   clients: { id: number; name: string; cam: string | null }[];
   client: number | null;
+  systems: string[];
+  system: string;
 }) {
   const [pickedCam, setPickedCam] = useState(cam);
   const [pickedClient, setPickedClient] = useState(client ? String(client) : "");
@@ -92,6 +96,20 @@ export default function ResultsFilters({
           ))}
         </select>
       </label>
+
+      {systems.length > 1 && (
+        <label className="text-xs text-muted">
+          Billing system
+          <select name="system" defaultValue={system} className={`${field} mt-1 block`}>
+            <option value="">All systems</option>
+            {systems.map((x) => (
+              <option key={x} value={x}>
+                {x === "advancedmd" ? "AdvancedMD" : x === "prompt" ? "Prompt" : "Other"}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       <button className="rounded-card bg-accent px-4 py-1.5 text-sm font-medium text-white shadow-card hover:bg-accentDeep">
         Show

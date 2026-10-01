@@ -15,7 +15,16 @@ export type Clinic = {
   status: string;
   go_live_date: string | null;
   notes: string | null;
+  /** Migration 031. AdvancedMD unless set otherwise. */
+  billing_system?: string | null;
 };
+
+/** The billing systems a client can be on (migration 031). */
+export const BILLING_SYSTEMS = [
+  ["advancedmd", "AdvancedMD"],
+  ["prompt", "Prompt"],
+  ["other", "Other"],
+] as const;
 
 export const ROLE_LABEL: Record<Role, string> = {
   admin: "Administrator",

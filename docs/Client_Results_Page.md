@@ -64,3 +64,12 @@ combined grade needs an agreed rule first.
 - Add-on CPT list; whether dollars mean charges, payments or both.
 - Patient-over-25 definitions; EMR task export; AdvancedMD collections and
   Prompt exports for collector received/resolved/pending.
+
+## Billing system (migration 031, 2 Oct 2026)
+
+`clinics.billing_system` is `advancedmd` (default), `prompt` or `other`. Nine
+clients are on **Prompt**: Performance Plus PT, Fullerton PT, Solutions PT,
+Pro-Motion, Rhodes PT, Star PT, Movement Works, Cox PT, Body Logic. Prompt
+clients are not in the AdvancedMD packs, ODBC feed or collections module, so
+the page labels them and says they need a Prompt export rather than showing
+"nothing imported". Set per clinic under Settings → Clinics.
