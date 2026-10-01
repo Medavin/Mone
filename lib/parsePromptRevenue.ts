@@ -91,7 +91,7 @@ export function parsePromptRevenue(wb: XLSX.WorkBook, fileName = ""): PromptReve
     return { rangeFrom: null, rangeTo: null, cells: new Map(), facilities: [], months: [], fullMonths: [], patientVisits: null, totals: { appointments: 0, billed: 0, paid: 0 }, summaryTotals: null, issues };
   }
 
-  const range = rangeFromFileName(fileName.replace(/Revenue_Report_-_/i, ""));
+  const range = rangeFromFileName(fileName);
   const cells: PromptRevenue["cells"] = new Map();
   const totals = { appointments: 0, billed: 0, paid: 0 };
   const perPatient = new Map<string, Map<string, number>>(); // facility → account → completed visits

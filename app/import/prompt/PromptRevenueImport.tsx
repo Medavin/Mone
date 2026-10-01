@@ -168,7 +168,7 @@ export default function PromptRevenueImport({
           </thead>
           <tbody>
             {parsed.facilities.map((f) => {
-              const c = parsed.months.map((m) => facilityMonth(parsed, f, m)).filter((_, i) => months.includes(parsed.months[i]))
+              const c = parsed.months.map((m) => facilityMonth(parsed, f, m))
                 .reduce((a, b) => ({ ...a, visits: a.visits + b.visits, cancelled: a.cancelled + b.cancelled, noShow: a.noShow + b.noShow, evals: a.evals + b.evals, billed: a.billed + b.billed, paid: a.paid + b.paid }),
                   { appointments: 0, visits: 0, cancelled: 0, noShow: 0, evals: 0, billed: 0, paid: 0, patientPaid: 0, insurancePaid: 0 });
               return (
@@ -207,15 +207,20 @@ export default function PromptRevenueImport({
           </select>
         </label>
 
-        <div className="mt-3 text-xs text-muted">Months to load (only months the date range covers from the 1st to the last day):</div>
+        <div className="mt-3 text-xs text-muted">
+          {parsed.rangeFrom
+            ? "Months to load (only months the date range covers from the 1st to the last day):"
+            : "The file name has no dates, so MBOne cannot tell which months are complete. Tick only the months you downloaded from the 1st to the last day:"}
+        </div>
         <div className="mt-1 flex flex-wrap gap-3 text-sm">
           {parsed.months.map((m) => {
-            const full = parsed.fullMonths.includes(m);
+            const known = !!parsed.rangeFrom;
+            const full = known ? parsed.fullMonths.includes(m) : true;
             return (
               <label key={m} className={`flex items-center gap-1.5 ${full ? "" : "text-muted"}`}>
                 <input type="checkbox" disabled={!full} checked={months.includes(m)}
                   onChange={(e) => setMonths(e.target.checked ? [...months, m].sort() : months.filter((x) => x !== m))} />
-                {monthName(m)}{!full && " — only part of the month, left out"}
+                {monthName(m)}{known && !full && " — only part of the month, left out"}
               </label>
             );
           })}

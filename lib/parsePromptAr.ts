@@ -78,7 +78,9 @@ function toIso(v: unknown): string | null {
 
 /** "AR_Report_-_09-26-26_to_10-02-26.xlsx" → the From and To dates. */
 export function rangeFromFileName(name: string): { from: string | null; to: string | null } {
-  const m = name.match(/(\d{2})-(\d{2})-(\d{2})_to_(\d{2})-(\d{2})-(\d{2})/);
+  // Browsers save the same download as "AR_Report_-_09-26-26_to_10-02-26"
+  // or "AR Report - 09-26-26 to 10-02-26" — accept spaces or underscores.
+  const m = name.match(/(\d{2})-(\d{2})-(\d{2})[\s_]+to[\s_]+(\d{2})-(\d{2})-(\d{2})/i);
   if (!m) return { from: null, to: null };
   return { from: `20${m[3]}-${m[1]}-${m[2]}`, to: `20${m[6]}-${m[4]}-${m[5]}` };
 }
