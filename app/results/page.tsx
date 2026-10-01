@@ -420,8 +420,23 @@ function Dashboard({ d, href, isManager }: { d: ResultsData; href: Href; isManag
       <section className="grid gap-4 md:grid-cols-2 2xl:grid-cols-[1fr_1.2fr_0.85fr_0.85fr]">
         <Card title="Top Denial Reasons" icon="denials" sub="(selected range)" right={<ViewLink href={href("denials")}>View Details</ViewLink>}
           footer="Grouped by each code's category. Counted per denial row.">
+          {d.denialRate && (
+            <div className="mb-3 flex items-baseline justify-between rounded-lg bg-canvas/60 px-3 py-2 text-sm">
+              <span><strong className="tnum text-lg">{plain(d.denialRate.denied)}</strong> denied of {plain(d.denialRate.claims)} claims</span>
+              <span className={`tnum font-bold ${(d.denialRate.rate ?? 0) >= 5 ? "text-bad" : "text-good"}`}>{pct1(d.denialRate.rate)}</span>
+            </div>
+          )}
           {d.denialGroups.length === 0 ? (
-            <p className="py-4 text-center text-sm text-muted">No denials recorded for these clients in this range. They arrive from the AdvancedMD Denial Module (Settings → Import any report).</p>
+            d.denialRate ? (
+              <div className="space-y-1.5 text-sm">
+                {d.denialRate.byClient.sort((a, b) => (b.rate ?? 0) - (a.rate ?? 0)).slice(0, 4).map((c) => (
+                  <div key={c.id} className="flex justify-between"><span className="truncate">{c.name}</span><span className="tnum text-xs text-muted">{c.denied} · {pct1(c.rate)}</span></div>
+                ))}
+                <p className="pt-1 text-[11px] text-muted">Reasons not loaded yet — the Remit Allocation Report gives the rate only. Reasons need a report with reason codes.</p>
+              </div>
+            ) : (
+              <p className="py-4 text-center text-sm text-muted">No denials recorded for these clients in this range. They arrive from the AdvancedMD Denial Module (Settings → Import any report), or Prompt&apos;s Remit Allocation Report for the rate.</p>
+            )
           ) : (
             <div className="space-y-2.5">
               {d.denialGroups.slice(0, 5).map(([k, g]) => {
@@ -680,6 +695,37 @@ function DenialsSection({ d }: { d: ResultsData }) {
   const total = d.denials.length;
   return (
     <>
+      {d.denialRate && (
+        <section className="grid gap-4 xl:grid-cols-2">
+          <Card title="Denial rate by client" icon="denials"
+            footer="Denied claims over claims returned by the payer, by month of service. Recent months always look better — most of their claims have not come back yet. Source: Prompt Remit Allocation Report.">
+            <ResultsTable
+              title={`Denial rate by client ${d.start} to ${d.end}`}
+              cols={[
+                { key: "client", label: "Client" }, { key: "claims", label: "Claims", type: "number" },
+                { key: "denied", label: "Denied", type: "number" }, { key: "rate", label: "Rate", type: "percent", ratio: true },
+                { key: "amount", label: "Denied $", type: "money" }, { key: "reversals", label: "Reversals", type: "number" },
+              ]}
+              rows={d.denialRate.byClient.map((c) => ({
+                client: c.name, claims: c.claims, denied: c.denied,
+                rate: c.rate === null ? null : Math.round(c.rate * 10) / 10, amount: Math.round(c.amount), reversals: c.reversals,
+              }))}
+              totals={{ rate: d.denialRate.rate }}
+            />
+          </Card>
+          <Card title="Denial rate by month" icon="calendar">
+            <ResultsTable
+              title={`Denial rate by month ${d.start} to ${d.end}`}
+              cols={[
+                { key: "month", label: "Month of service" }, { key: "claims", label: "Claims", type: "number" },
+                { key: "denied", label: "Denied", type: "number" }, { key: "rate", label: "Rate", type: "percent", ratio: true },
+              ]}
+              rows={d.denialRate.byMonth.map((m) => ({ month: monthLabel(m.month), claims: m.claims, denied: m.denied, rate: m.rate === null ? null : Math.round(m.rate * 10) / 10 }))}
+              totals={{ rate: d.denialRate.rate }}
+            />
+          </Card>
+        </section>
+      )}
       <Card title="Denials by reason" icon="denials" footer="Category comes from the denial code list (Denials page → codes). Still to agree: count by claim, visit or line, and which adjustments are not true denials.">
         <ResultsTable
           title={`Denial reasons ${d.start} to ${d.end}`}

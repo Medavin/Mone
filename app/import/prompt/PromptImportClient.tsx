@@ -8,6 +8,8 @@ import { parsePromptAr, isPromptAr, rangeLooksPartial, type PromptAr, type Bucke
 import { isPromptRevenue } from "@/lib/parsePromptRevenue";
 import PromptRevenueImport from "./PromptRevenueImport";
 import PromptCptImport from "./PromptCptImport";
+import PromptRemitImport from "./PromptRemitImport";
+import { isPromptRemit } from "@/lib/parsePromptRemit";
 import { isPromptCpt } from "@/lib/parsePromptCpt";
 
 /**
@@ -48,6 +50,7 @@ export default function PromptImportClient({
   const [readError, setReadError] = useState<string | null>(null);
   const [revenueWb, setRevenueWb] = useState<XLSX.WorkBook | null>(null);
   const [cptWb, setCptWb] = useState<XLSX.WorkBook | null>(null);
+  const [remitWb, setRemitWb] = useState<XLSX.WorkBook | null>(null);
   const [reading, setReading] = useState(false);
   const [account, setAccount] = useState("");
   const [map, setMap] = useState<Record<string, string>>({});
@@ -71,6 +74,7 @@ export default function PromptImportClient({
     setParsed(null);
     setRevenueWb(null);
     setCptWb(null);
+    setRemitWb(null);
     setFileName(file.name);
     setPartialOk(false);
     setReading(true);
@@ -81,7 +85,16 @@ export default function PromptImportClient({
       // JavaScript date is converted through this computer's time zone, and on
       // India time every date came out a day early (2 Oct 2026). Day numbers
       // are converted in UTC by the parsers, so they mean the same everywhere.
-      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      // A CSV is read as plain text with NO value guessing (raw), so dates
+      // stay as "01/02/2026" and are converted by the parser, not by the
+      // spreadsheet reader through this computer's time zone.
+      const wb = /\.csv$/i.test(file.name)
+        ? XLSX.read(await file.text(), { type: "string", raw: true })
+        : XLSX.read(await file.arrayBuffer(), { type: "array" });
+      if (isPromptRemit(wb)) {
+        setRemitWb(wb);
+        return;
+      }
       if (isPromptCpt(wb)) {
         setCptWb(wb);
         return;
@@ -91,7 +104,7 @@ export default function PromptImportClient({
         return;
       }
       if (!isPromptAr(wb)) {
-        setReadError("MBOne recognises three Prompt reports so far, all under Reports → Revenue: the A/R Report, the Visits Revenue Report and Revenue by CPT Code. This file is none of them.");
+        setReadError("MBOne recognises four Prompt reports so far, all under Reports → Revenue: the A/R Report, the Visits Revenue Report, Revenue by CPT Code and the Remit Allocation Report. This file is none of them.");
         return;
       }
       const p = parsePromptAr(wb, file.name);
@@ -262,13 +275,14 @@ export default function PromptImportClient({
 
       {/* 1 — the file */}
       <section>
-        <h2 className="text-sm font-semibold">1 · Choose the Prompt report — A/R Report, Visits Revenue Report or Revenue by CPT Code</h2>
-        <input type="file" accept=".xlsx,.xls" className="mt-2 text-sm"
+        <h2 className="text-sm font-semibold">1 · Choose the Prompt report — A/R, Visits Revenue, Revenue by CPT Code or Remit Allocation</h2>
+        <input type="file" accept=".xlsx,.xls,.csv" className="mt-2 text-sm"
           onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
         {readError && <p className="mt-2 text-sm text-bad">{readError}</p>}
       </section>
 
       {reading && <p className="text-sm text-muted">Reading the file… a large report can take up to half a minute.</p>}
+      {remitWb && <PromptRemitImport wb={remitWb} fileName={fileName} clinics={clinics} aliases={aliases} />}
       {cptWb && <PromptCptImport wb={cptWb} fileName={fileName} clinics={clinics} aliases={aliases} />}
       {revenueWb && <PromptRevenueImport wb={revenueWb} fileName={fileName} clinics={clinics} aliases={aliases} />}
 

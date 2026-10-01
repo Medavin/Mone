@@ -450,6 +450,41 @@ export async function loadResults(supabase: SupabaseClient, p: Params) {
     return { cam: nm, clients: rows.filter((r) => (r.cam ?? "No CAM") === nm).length, snap: combinedSnapshot(mine.map((r) => historyOf(r.id)), from, to) };
   });
 
+  // ---- claim outcomes: denial RATE per client per month (no reasons) ----
+  // Missing table (migration 035 not run) reads as "no data".
+  type Outcome = { clinic_id: number; period_month: string; claims: number; denied_claims: number; denied_amount: number | null; reversals: number | null };
+  let outcomes: Outcome[] = [];
+  if (scopeIds.length) {
+    const { data: oc } = await supabase.from("claim_outcomes_monthly")
+      .select("clinic_id, period_month, claims, denied_claims, denied_amount, reversals")
+      .in("clinic_id", scopeIds).gte("period_month", `${from}-01`).lte("period_month", `${to}-01`);
+    outcomes = (oc ?? []) as Outcome[];
+  }
+  const denialRate = (() => {
+    if (!outcomes.length) return null;
+    const byClient = new Map<number, { claims: number; denied: number; amount: number; reversals: number }>();
+    for (const o of outcomes) {
+      const c = byClient.get(o.clinic_id) ?? { claims: 0, denied: 0, amount: 0, reversals: 0 };
+      c.claims += o.claims; c.denied += o.denied_claims; c.amount += Number(o.denied_amount ?? 0); c.reversals += o.reversals ?? 0;
+      byClient.set(o.clinic_id, c);
+    }
+    const claims = outcomes.reduce((t, o) => t + o.claims, 0);
+    const denied = outcomes.reduce((t, o) => t + o.denied_claims, 0);
+    const byMonth = new Map<string, { claims: number; denied: number }>();
+    for (const o of outcomes) {
+      const m = o.period_month.slice(0, 7);
+      const x = byMonth.get(m) ?? { claims: 0, denied: 0 };
+      x.claims += o.claims; x.denied += o.denied_claims;
+      byMonth.set(m, x);
+    }
+    return {
+      claims, denied, rate: claims ? (denied / claims) * 100 : null,
+      amount: outcomes.reduce((t, o) => t + Number(o.denied_amount ?? 0), 0),
+      byClient: Array.from(byClient.entries()).map(([id, c]) => ({ id, name: clinicName.get(id) ?? "—", ...c, rate: c.claims ? (c.denied / c.claims) * 100 : null })),
+      byMonth: Array.from(byMonth.entries()).sort().map(([m, x]) => ({ month: m, ...x, rate: x.claims ? (x.denied / x.claims) * 100 : null })),
+    };
+  })();
+
   // ---- patients over 25 visits: two counts per client per year ----------
   // Clients are distinct, so their counts add up. Missing table (migration
   // 033 not run) reads as "no data", never as an error on the page.
@@ -500,7 +535,7 @@ export async function loadResults(supabase: SupabaseClient, p: Params) {
     camWork: Array.from(camWork.entries()).sort((a, b) => a[0].localeCompare(b[0])),
     camTaskList,
     parties: parties.filter((x) => x.is_active && x.kind === "person").map((x) => ({ id: x.id, name: x.name })),
-    lastPack: lastOf(packB), lastActions: lastOf(actB), over25,
+    lastPack: lastOf(packB), lastActions: lastOf(actB), over25, denialRate,
   };
 }
 
