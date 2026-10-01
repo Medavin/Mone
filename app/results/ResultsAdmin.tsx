@@ -155,3 +155,33 @@ export function AddonEditor({ codes }: { codes: { code: string; label: string | 
     </div>
   );
 }
+
+/**
+ * Assign a client to a CAM from one small form, for the Clients section.
+ * Same history-keeping rule as CamPicker: close, then open.
+ */
+export function CamAssignForm({
+  clients,
+  parties,
+}: {
+  clients: { id: number; name: string; cam: string | null; assignmentId: number | null }[];
+  parties: { id: number; name: string }[];
+}) {
+  const [clientId, setClientId] = useState("");
+  const chosen = clients.find((c) => String(c.id) === clientId);
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <span className="text-muted">Change a client&apos;s CAM:</span>
+      <select value={clientId} onChange={(e) => setClientId(e.target.value)} className="rounded border border-hairline px-2 py-1 text-sm">
+        <option value="">Choose a client…</option>
+        {clients.map((c) => (
+          <option key={c.id} value={c.id}>{c.name}{c.cam ? ` (${c.cam})` : " (no CAM)"}</option>
+        ))}
+      </select>
+      {chosen && (
+        <CamPicker clinicId={chosen.id} current={chosen.cam} currentAssignmentId={chosen.assignmentId} parties={parties} />
+      )}
+      <span className="text-[11px] text-muted">The old assignment is kept in the history, so earlier months keep their CAM.</span>
+    </div>
+  );
+}
