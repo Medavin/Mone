@@ -312,24 +312,29 @@ export async function loadResults(supabase: SupabaseClient, p: Params) {
   const addonRes = await supabase.from("addon_codes").select("code, label").eq("is_active", true).order("code");
   const addonTableMissing = !!addonRes.error;
   const addons = (addonRes.data ?? []) as { code: string; label: string | null }[];
-  const addonUse = new Map<string, { units: number; charges: number; desc: string | null; clients: Set<number> }>();
-  const addonByClient = new Map<number, { units: number; charges: number }>();
+  // paid is null until a source reports it (Prompt's CPT report does;
+  // AdvancedMD's Service Details does not) — never shown as $0.
+  const addonUse = new Map<string, { units: number; charges: number; paid: number | null; desc: string | null; clients: Set<number> }>();
+  const addonByClient = new Map<number, { units: number; charges: number; paid: number | null }>();
   if (addons.length && scopeIds.length) {
     const { data: procs } = await supabase.from("procedures").select("id, code, description").in("code", addons.map((a) => a.code));
     const procById = new Map(((procs ?? []) as { id: number; code: string; description: string | null }[]).map((x) => [x.id, x]));
     if (procById.size) {
-      const svc = await fetchAllRows<{ clinic_id: number; procedure_id: number; units: number | null; charges: number | null }>((lo, hi) =>
-        supabase.from("service_monthly").select("clinic_id, procedure_id, units, charges")
+      // "*" so this still works before migration 034 adds `paid`.
+      const svc = await fetchAllRows<{ clinic_id: number; procedure_id: number; units: number | null; charges: number | null; paid?: number | null }>((lo, hi) =>
+        supabase.from("service_monthly").select("*")
           .in("clinic_id", scopeIds).in("procedure_id", Array.from(procById.keys()))
           .gte("period_month", `${from}-01`).lte("period_month", `${to}-01`).order("id").range(lo, hi));
       for (const r of svc.rows) {
         const pr = procById.get(r.procedure_id);
         if (!pr) continue;
-        const u = addonUse.get(pr.code) ?? { units: 0, charges: 0, desc: pr.description, clients: new Set<number>() };
+        const u = addonUse.get(pr.code) ?? { units: 0, charges: 0, paid: null, desc: pr.description, clients: new Set<number>() };
         u.units += Number(r.units ?? 0); u.charges += Number(r.charges ?? 0); u.clients.add(r.clinic_id);
+        if (r.paid !== null && r.paid !== undefined) u.paid = (u.paid ?? 0) + Number(r.paid);
         addonUse.set(pr.code, u);
-        const c = addonByClient.get(r.clinic_id) ?? { units: 0, charges: 0 };
+        const c = addonByClient.get(r.clinic_id) ?? { units: 0, charges: 0, paid: null };
         c.units += Number(r.units ?? 0); c.charges += Number(r.charges ?? 0);
+        if (r.paid !== null && r.paid !== undefined) c.paid = (c.paid ?? 0) + Number(r.paid);
         addonByClient.set(r.clinic_id, c);
       }
     }

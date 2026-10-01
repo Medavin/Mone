@@ -379,6 +379,8 @@ function Dashboard({ d, href, isManager }: { d: ResultsData; href: Href; isManag
   const deniedTotal = d.denials.length;
   const addonUnits = d.addonUse.reduce((t, [, u]) => t + u.units, 0);
   const addonCharges = d.addonUse.reduce((t, [, u]) => t + u.charges, 0);
+  const addonPaidKnown = d.addonUse.some(([, u]) => u.paid !== null);
+  const addonPaid = d.addonUse.reduce((t, [, u]) => t + (u.paid ?? 0), 0);
 
   return (
     <>
@@ -476,23 +478,24 @@ function Dashboard({ d, href, isManager }: { d: ResultsData; href: Href; isManag
         </Card>
 
         <Card title="Add-On Code Utilization" icon="utilization" sub="(range)" right={<ViewLink href={href("utilization")}>View</ViewLink>}
-          footer="Billed charges from Service Details in the monthly pack. Payments by code need a transaction-level report.">
+          footer={addonPaidKnown ? "Billed and paid by CPT code. Paid comes from Prompt's Revenue by CPT Code report; AdvancedMD clients show billed only until a payments-by-code report is connected." : "Billed charges from Service Details in the monthly pack. Payments by code need a transaction-level report."}>
           {d.addonTableMissing ? (
             <p className="py-4 text-center text-sm text-muted">Run migration 030 to create the add-on code list.</p>
           ) : d.addons.length === 0 ? (
             <p className="py-4 text-center text-sm text-muted">No add-on codes chosen yet. Momentum picks them under Utilization.</p>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-2 text-center">
-                <div><div className="tnum text-2xl font-bold">{plain(addonUnits)}</div><div className="text-[11px] text-muted">Add-On Units</div></div>
-                <div><div className="tnum text-2xl font-bold">{money(addonCharges)}</div><div className="text-[11px] text-muted">Charges billed</div></div>
+              <div className={`grid gap-2 text-center ${addonPaidKnown ? "grid-cols-3" : "grid-cols-2"}`}>
+                <div><div className="tnum text-xl font-bold">{plain(addonUnits)}</div><div className="text-[11px] text-muted">Add-On Units</div></div>
+                <div><div className="tnum text-xl font-bold">{money(addonCharges)}</div><div className="text-[11px] text-muted">Billed</div></div>
+                {addonPaidKnown && <div><div className="tnum text-xl font-bold text-good">{money(addonPaid)}</div><div className="text-[11px] text-muted">Paid</div></div>}
               </div>
               <div className="mt-3 text-xs font-semibold">Top Add-On CPT Codes</div>
               <table className="mt-1 w-full text-xs">
-                <thead><tr className="border-b border-hairline text-muted"><th className="py-1 text-left font-medium">CPT Code</th><th className="py-1 text-right font-medium">Units</th><th className="py-1 text-right font-medium">Charges</th></tr></thead>
+                <thead><tr className="border-b border-hairline text-muted"><th className="py-1 text-left font-medium">CPT Code</th><th className="py-1 text-right font-medium">Units</th><th className="py-1 text-right font-medium">{addonPaidKnown ? "Paid" : "Charges"}</th></tr></thead>
                 <tbody>
                   {d.addonUse.slice(0, 4).map(([code, u]) => (
-                    <tr key={code} className="border-b border-hairline/50"><td className="tnum py-1">{code}</td><td className="tnum py-1 text-right">{plain(u.units)}</td><td className="tnum py-1 text-right">{money(u.charges)}</td></tr>
+                    <tr key={code} className="border-b border-hairline/50"><td className="tnum py-1">{code}</td><td className="tnum py-1 text-right">{plain(u.units)}</td><td className="tnum py-1 text-right">{money(addonPaidKnown ? u.paid : u.charges)}</td></tr>
                   ))}
                   {d.addonUse.length === 0 && <tr><td colSpan={3} className="py-2 text-center text-muted">None billed in this range.</td></tr>}
                 </tbody>
@@ -814,10 +817,15 @@ function UtilizationSection({ d, isManager }: { d: ResultsData; isManager: boole
             title={`Add-on codes ${d.start} to ${d.end}`}
             cols={[
               { key: "code", label: "CPT" }, { key: "desc", label: "Description" },
-              { key: "units", label: "Units", type: "number" }, { key: "charges", label: "Charges", type: "money" },
+              { key: "units", label: "Units", type: "number" }, { key: "charges", label: "Billed", type: "money" },
+              { key: "paid", label: "Paid", type: "money" }, { key: "perUnit", label: "Paid / unit", type: "money", ratio: true },
               { key: "clients", label: "Clients billing it", type: "number" },
             ]}
-            rows={d.addonUse.map(([code, u]) => ({ code, desc: u.desc, units: u.units, charges: Math.round(u.charges), clients: u.clients.size }))}
+            rows={d.addonUse.map(([code, u]) => ({
+              code, desc: u.desc, units: u.units, charges: Math.round(u.charges),
+              paid: u.paid === null ? null : Math.round(u.paid), perUnit: u.paid !== null && u.units ? Math.round((u.paid / u.units) * 100) / 100 : null,
+              clients: u.clients.size,
+            }))}
             empty={d.addons.length ? "None of the chosen codes were billed in this range." : "No add-on codes chosen yet — add them below."}
           />
         )}
@@ -826,10 +834,11 @@ function UtilizationSection({ d, isManager }: { d: ResultsData; isManager: boole
       <Card title="Add-on use by client" icon="clients">
         <ResultsTable
           title={`Add-on codes by client ${d.start} to ${d.end}`}
-          cols={[{ key: "client", label: "Client" }, { key: "cam", label: "CAM" }, { key: "units", label: "Units", type: "number" }, { key: "charges", label: "Charges", type: "money" }]}
-          rows={d.rows.filter((r) => d.addonByClient.has(r.id)).map((r) => ({
-            client: r.name, cam: r.cam, units: d.addonByClient.get(r.id)!.units, charges: Math.round(d.addonByClient.get(r.id)!.charges),
-          }))}
+          cols={[{ key: "client", label: "Client" }, { key: "cam", label: "CAM" }, { key: "units", label: "Units", type: "number" }, { key: "charges", label: "Billed", type: "money" }, { key: "paid", label: "Paid", type: "money" }]}
+          rows={d.rows.filter((r) => d.addonByClient.has(r.id)).map((r) => {
+            const a = d.addonByClient.get(r.id)!;
+            return { client: r.name, cam: r.cam, units: a.units, charges: Math.round(a.charges), paid: a.paid === null ? null : Math.round(a.paid) };
+          })}
           empty="No add-on codes billed by these clients in this range."
         />
       </Card>
