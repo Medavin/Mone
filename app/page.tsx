@@ -13,8 +13,9 @@ const ROUTES: Record<string, string> = {
   dashboard: "/dashboard",
   clinics: "/clinics",
   people: "/people",
+  // Michelle's Client & CAM Results page (spec of 29 Sep 2026).
+  operations: "/results",
   // Not built yet — the preference is remembered, the destination is not.
-  operations: "/dashboard",
   cam: "/dashboard",
   guest: "/clinics",
 };

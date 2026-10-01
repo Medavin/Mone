@@ -22,6 +22,7 @@ type Entry = {
   amount: number | null;
   status: string;
   resolved_on: string | null;
+  responded_on?: string | null;
   note: string | null;
 };
 
@@ -134,6 +135,22 @@ export default function CrlClient({
     const { error: err } = await supabase.from("crl_entries").update(patch).eq("id", id);
     setBusy(false);
     if (err) setError(err.message);
+    else router.refresh();
+  }
+
+  /**
+   * The day the client answered. Feeds "average response time" on the
+   * Client results page; without it the CRL can count requests but cannot
+   * say how quickly anyone replied. Needs migration 030.
+   */
+  async function markResponded(id: number, day: string | null) {
+    setBusy(true);
+    const { error: err } = await supabase
+      .from("crl_entries")
+      .update({ responded_on: day, updated_at: new Date().toISOString() })
+      .eq("id", id);
+    setBusy(false);
+    if (err) setError(err.message.includes("responded_on") ? "Run migration 030 first — the reply date column does not exist yet." : err.message);
     else router.refresh();
   }
 
@@ -340,6 +357,7 @@ export default function CrlClient({
               { header: "Issue", value: (e) => e.issue ?? "" },
               { header: "Amount", value: (e) => e.amount ?? "" },
               { header: "Status", value: (e) => e.status },
+              { header: "Client replied", value: (e) => e.responded_on ?? "" },
             ]}
           />
           <table className="mt-3 w-full text-sm">
@@ -351,6 +369,7 @@ export default function CrlClient({
                 <th className={thL}>Patient / issue</th>
                 <th className={thR}>Amount</th>
                 <th className={thL}>Status</th>
+                <th className={thL}>Client replied</th>
               </tr>
             </thead>
             <tbody>
@@ -383,6 +402,26 @@ export default function CrlClient({
                       </select>
                     ) : (
                       <span className="text-xs">{e.status.replace("_", " ")}</span>
+                    )}
+                  </td>
+                  <td className="py-2 text-xs whitespace-nowrap">
+                    {e.responded_on ? (
+                      <>
+                        {e.responded_on}
+                        {canEdit && (
+                          <button onClick={() => markResponded(e.id, null)} disabled={busy} className="ml-1 text-muted hover:text-bad" title="Clear the reply date">×</button>
+                        )}
+                      </>
+                    ) : canEdit ? (
+                      <input
+                        type="date"
+                        disabled={busy}
+                        onChange={(ev) => ev.target.value && markResponded(e.id, ev.target.value)}
+                        className="rounded border border-hairline px-1 py-0.5 text-xs"
+                        title="The day the client answered this request"
+                      />
+                    ) : (
+                      <span className="text-muted">—</span>
                     )}
                   </td>
                 </tr>

@@ -66,6 +66,7 @@ const GROUPS: Group[] = [
     colour: "#3D5AB5",
     icon: ICONS.clinics,
     items: [
+      { href: "/results", label: "Client results", hint: "Every client by CAM: A/R health, CRL, denials, workload" },
       { href: "/packs", label: "Monthly packs", hint: "Generate the client workbook, any clinic, any period" },
       { href: "/clinics", label: "Clinics", hint: "A/R, aging and the month's figures" },
       { href: "/assignments", label: "Assignments", hint: "Who owns which work, per clinic" },

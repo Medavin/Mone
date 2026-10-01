@@ -90,6 +90,12 @@ export const TARGETS: Target[] = [
         aliases: ["patient", "patient name", "name"] },
       { column: "chart_no", label: "Chart number", kind: "text",
         aliases: ["chart", "chart no", "account", "mrn"] },
+      // Migration 030. These two give the Client results page its
+      // response time and its oldest-open-item figures.
+      { column: "responded_on", label: "Client replied on", kind: "date",
+        aliases: ["responded", "response date", "replied", "answered", "date answered"] },
+      { column: "resolved_on", label: "Closed on", kind: "date",
+        aliases: ["resolved", "closed", "closed date", "completed", "date closed"] },
     ],
   },
   {
