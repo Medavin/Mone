@@ -445,6 +445,26 @@ export async function loadResults(supabase: SupabaseClient, p: Params) {
     return { cam: nm, clients: rows.filter((r) => (r.cam ?? "No CAM") === nm).length, snap: combinedSnapshot(mine.map((r) => historyOf(r.id)), from, to) };
   });
 
+  // ---- patients over 25 visits: two counts per client per year ----------
+  // Clients are distinct, so their counts add up. Missing table (migration
+  // 033 not run) reads as "no data", never as an error on the page.
+  let over25: { patients: number; over: number; clients: number; asOf: string | null; year: number } | null = null;
+  if (scopeIds.length) {
+    const year = Number(end.slice(0, 4));
+    const { data: pvc } = await supabase.from("patient_visit_counts")
+      .select("clinic_id, patients, over_threshold, as_of").in("clinic_id", scopeIds).eq("year", year);
+    const list = (pvc ?? []) as { clinic_id: number; patients: number; over_threshold: number; as_of: string }[];
+    if (list.length) {
+      over25 = {
+        patients: list.reduce((t, r) => t + r.patients, 0),
+        over: list.reduce((t, r) => t + r.over_threshold, 0),
+        clients: list.length,
+        asOf: list.map((r) => r.as_of).sort()[0] ?? null,
+        year,
+      };
+    }
+  }
+
   // ---- import freshness ----------------------------------------------------
   const [packB, actB] = await Promise.all([
     supabase.from("import_batches").select("finished_at, started_at").eq("report_kind", "amd_monthly_pack")
@@ -475,7 +495,7 @@ export async function loadResults(supabase: SupabaseClient, p: Params) {
     camWork: Array.from(camWork.entries()).sort((a, b) => a[0].localeCompare(b[0])),
     camTaskList,
     parties: parties.filter((x) => x.is_active && x.kind === "person").map((x) => ({ id: x.id, name: x.name })),
-    lastPack: lastOf(packB), lastActions: lastOf(actB),
+    lastPack: lastOf(packB), lastActions: lastOf(actB), over25,
   };
 }
 

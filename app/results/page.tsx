@@ -460,15 +460,17 @@ function Dashboard({ d, href, isManager }: { d: ResultsData; href: Href; isManag
           )}
         </Card>
 
-        <Card title="Patients Over 25 Visits" icon="people" sub="(YTD)"
-          footer="Needs a per-client count from AdvancedMD: patients with more than 25 completed visits this year, and all patients seen. Only the two numbers — no patient detail leaves AdvancedMD.">
+        <Card title="Patients Over 25 Visits" icon="people" sub={d.over25 ? `(${d.over25.year}, to ${dateLabel(d.over25.asOf)})` : "(YTD)"}
+          footer={d.over25
+            ? `Completed visits counted from 1 January, per client — ${d.over25.clients} of ${d.rows.length} clients reporting so far. Only the two counts are stored, never patient details.`
+            : "Needs a per-client count. For Prompt clients: import the Visits Revenue Report from 1 January. For AdvancedMD clients: a two-number query (patients over 25 completed visits, and all patients seen)."}>
           <div className="flex items-center gap-4">
-            <Donut part={null} total={null} label="no data yet" />
+            <Donut part={d.over25?.over ?? null} total={d.over25?.patients ?? null} label={d.over25 ? `${plain(d.over25.over)} patients` : "no data yet"} />
             <div className="space-y-2 text-sm">
-              <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-brandMid" /> Patients &gt; 25 Visits <strong className="tnum ml-1">—</strong></div>
-              <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-accentSoft" /> Patients ≤ 25 Visits <strong className="tnum ml-1">—</strong></div>
+              <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-brandMid" /> Patients &gt; 25 Visits <strong className="tnum ml-1">{plain(d.over25?.over)}</strong></div>
+              <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-accentSoft" /> Patients ≤ 25 Visits <strong className="tnum ml-1">{d.over25 ? plain(d.over25.patients - d.over25.over) : "—"}</strong></div>
               <div className="pt-1 text-xs text-muted">Total Unique Patients</div>
-              <div className="tnum text-xl font-bold">—</div>
+              <div className="tnum text-xl font-bold">{plain(d.over25?.patients)}</div>
             </div>
           </div>
         </Card>

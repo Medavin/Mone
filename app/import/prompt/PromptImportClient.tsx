@@ -5,6 +5,8 @@ import Link from "next/link";
 import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
 import { parsePromptAr, isPromptAr, rangeLooksPartial, type PromptAr, type Buckets } from "@/lib/parsePromptAr";
+import { isPromptRevenue } from "@/lib/parsePromptRevenue";
+import PromptRevenueImport from "./PromptRevenueImport";
 
 /**
  * The Prompt A/R import, in the order Pravin asked for on the AdvancedMD
@@ -42,6 +44,7 @@ export default function PromptImportClient({
   const [fileName, setFileName] = useState("");
   const [parsed, setParsed] = useState<PromptAr | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
+  const [revenueWb, setRevenueWb] = useState<XLSX.WorkBook | null>(null);
   const [account, setAccount] = useState("");
   const [map, setMap] = useState<Record<string, string>>({});
   const [month, setMonth] = useState("");
@@ -62,12 +65,17 @@ export default function PromptImportClient({
     setResult(null);
     setReadError(null);
     setParsed(null);
+    setRevenueWb(null);
     setFileName(file.name);
     setPartialOk(false);
     try {
       const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+      if (isPromptRevenue(wb)) {
+        setRevenueWb(wb);
+        return;
+      }
       if (!isPromptAr(wb)) {
-        setReadError("This is not Prompt's A/R Report — it has no 'AR by Facility' sheet. In Prompt: Reports → Revenue → A/R Report.");
+        setReadError("MBOne recognises two Prompt reports so far: the A/R Report and the Visits Revenue Report (both under Reports → Revenue). This file is neither.");
         return;
       }
       const p = parsePromptAr(wb, file.name);
@@ -236,11 +244,13 @@ export default function PromptImportClient({
 
       {/* 1 — the file */}
       <section>
-        <h2 className="text-sm font-semibold">1 · Choose the A/R Report you downloaded from Prompt</h2>
+        <h2 className="text-sm font-semibold">1 · Choose the Prompt report — A/R Report or Visits Revenue Report</h2>
         <input type="file" accept=".xlsx,.xls" className="mt-2 text-sm"
           onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
         {readError && <p className="mt-2 text-sm text-bad">{readError}</p>}
       </section>
+
+      {revenueWb && <PromptRevenueImport wb={revenueWb} fileName={fileName} clinics={clinics} aliases={aliases} />}
 
       {parsed && (
         <>

@@ -35,8 +35,9 @@ export default async function PromptImportPage() {
             <Link href="/import" className="text-sm text-accent underline">Import an AdvancedMD pack instead</Link>
           </div>
           <p className="mt-1 text-sm text-muted">
-            For clients that bill in Prompt. In Prompt: Reports → Revenue → <strong>A/R Report</strong>, choose All
-            Facilities, set <strong>From</strong> to the earliest date and <strong>To</strong> to the month end, then download.
+            For clients that bill in Prompt, from Reports → Revenue. <strong>A/R Report</strong>: All Facilities, From = the
+            earliest date, To = the month end. <strong>Visits Revenue Report</strong>: All Facilities, From = 1 January,
+            To = the last month end — one file fills every month of the year and the patients-over-25 count.
             The file is read on this computer; only facility totals are saved — no patient names, dates of birth or
             member IDs ever leave your browser.
           </p>
